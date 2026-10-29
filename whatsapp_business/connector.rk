@@ -1,0 +1,68 @@
+# yaml-language-server: $schema=https://rangka.dev/schema/0.4/connector.json
+name: whatsapp_business
+label: {id: WhatsApp Business}
+version: 1.0.0
+vendor: Meta WhatsApp Cloud API
+docs: https://developers.facebook.com/docs/whatsapp/cloud-api
+auth:
+  type: token
+  fields:
+    - name: access_token
+      label: {id: Access token}
+      secret: true
+    - name: phone_number_id
+      label: {id: Phone number ID}
+    - name: app_secret
+      label: {id: App secret}
+      secret: true
+      help: {id: Dipakai untuk memeriksa tanda tangan webhook}
+    - name: verify_token
+      label: {id: Verify token}
+      secret: true
+      generate: true
+triggers:
+  - name: message_received
+    label: {id: Pesan masuk}
+    via: webhook
+    verify:
+      challenge: hub.verify_token == auth.verify_token
+      signature:
+        header: X-Hub-Signature-256
+        alg: hmac-sha256
+        key: auth.app_secret
+    for_each: entry[].changes[].value.messages[]
+    emit:
+      message_id: item.id
+      from: item.from
+      text: item.text.body
+      profile_name: value.contacts[0].profile.name
+      at: item.timestamp
+actions:
+  - name: send_template
+    label: {id: Kirim pesan template}
+    request:
+      method: POST
+      url: https://graph.facebook.com/{api_version}/{auth.phone_number_id}/messages
+      headers: {Authorization: 'Bearer {auth.access_token}'}
+      body:
+        messaging_product: whatsapp
+        to: '{input.to}'
+        type: template
+        template:
+          name: '{input.template}'
+          language: {code: id}
+          components: '{input.components}'
+    input:
+      - {name: to, type: phone, required: true}
+      - {name: template, type: data, required: true}
+      - {name: components, type: json}
+    retry:
+      max: 5
+      backoff: exponential
+      on: [429, 500, 502, 503]
+    idempotency: input.idempotency_key
+settings:
+  - {name: api_version, type: data, default: "'v21.0'"}
+limits:
+  rate: 80/s per phone number
+  note: {id: Pesan template di luar jendela 24 jam dikenai biaya oleh Meta}
