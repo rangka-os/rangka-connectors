@@ -43,7 +43,7 @@ notifications, while connectors integrate the business with outside services. Th
 ## Writing a connector
 
 Create `<name>/connector.rk` with the schema line
-`# yaml-language-server: $schema=https://rangka.dev/schema/0.4/connector.json` and declare `auth` (fields marked
+`# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.4/connector.json` and declare `auth` (fields marked
 `secret: true`), `triggers` (`via: webhook` or `poll`, verification, `emit` mapping) and `actions` (request,
 response mapping, `retry`). Validate it together with the apps:
 
