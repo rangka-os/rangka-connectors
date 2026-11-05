@@ -32,7 +32,8 @@ on: xendit.va_paid
 if: event.paid            # the trigger fires for every callback; only a completed payment records money
 idempotency: event.gateway_ref
 steps:
-  # a live payment already holds this gateway id: the callback came again, do nothing
+  # a live payment already holds this gateway id: the callback came again, do nothing (the flow's `idempotency:` is
+  # read but not enforced by the kernel yet, so this step and the claim below are the guard)
   - {find: payment, where: "gateway_ref == event.gateway_ref && docstatus != 2", as: done}
   # only a submitted invoice (docstatus 1): a callback for a cancelled invoice (or its amended "-1") records nothing
   - {find: sales_invoice, where: "name == event.external_id && docstatus == 1", as: inv}
@@ -51,9 +52,14 @@ steps:
       allocations: "min(event.paid_amount, inv.outstanding - drafts.map(p, p.allocated_total).sum()) > 0 ? [{'sales_invoice': inv.name, 'amount': min(event.paid_amount, inv.outstanding - drafts.map(p, p.allocated_total).sum())}] : []"
     as: pay
   # a payment made inside a flow does not run rangka-apps' claim flows (the kernel does not nest flows), so the flow
-  # claims the id itself; two callbacks racing both pass `done` and the unique claim refuses the second
+  # claims the id itself, as payment_gateway_claim_created does: a claim left by a deleted draft is taken over, else
+  # a new claim, which the unique index refuses for the second of two racing callbacks
+  - {find: gateway_ref_claim, where: gateway_ref == event.gateway_ref, as: held}
+  - update: held
+    if: done == null && inv != null && held != null
+    set: {payment: pay.name}
   - create: gateway_ref_claim
-    if: done == null && inv != null
+    if: done == null && inv != null && held == null
     set: {gateway_ref: event.gateway_ref, payment: pay.name}
 ```
 

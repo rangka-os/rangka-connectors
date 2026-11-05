@@ -6,8 +6,8 @@
 # held by one live payment at a time in rangka-apps (gateway_ref_claim), so a callback delivered twice cannot pay an
 # invoice twice.
 # A trigger fires for every callback of its kind, not only for payments: Xendit sends the invoice callback for
-# EXPIRED links too, and a QR callback carries data.status. Every trigger therefore emits `paid` (true only for a
-# completed payment: VA always, QR SUCCEEDED, link PAID or SETTLED), and a flow that records money starts with
+# EXPIRED links too, and a QR callback carries event (qr.payment, qr.refund) and data.status. Every trigger therefore emits `paid` (true only for a
+# completed payment: VA always, QR qr.payment SUCCEEDED, link PAID or SETTLED), and a flow that records money starts with
 # `if: event.paid` (the trigger format has no filter of its own). See the README example.
 # Test mode: a secret key starting with xnd_development_ talks to the same URLs; the dashboard simulates VA and QRIS
 # payments and sends the callbacks.
@@ -59,7 +59,7 @@ triggers:
       paid_amount: data.amount
       paid_at: data.created
       status: data.status
-      paid: data.status == 'SUCCEEDED'
+      paid: event == 'qr.payment' && data.status == 'SUCCEEDED'
       method: "'qris'"
       sub_account: business_id
   - name: invoice_paid
