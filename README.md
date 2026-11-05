@@ -21,9 +21,10 @@ Part of the Rangka family: [rangka-os](https://github.com/rangka-os/rangka-os) ย
 Planned, in rough order: QRIS (Midtrans), bank statements, e-Faktur / Coretax, Tokopedia, Shopee, TikTok Shop,
 GoFood / GrabFood, Accurate / Jurnal import.
 
-A payment connector ends in a `payment` with a unique `gateway_ref` in rangka-apps (one invoice is never paid twice
-by a repeated callback). `qr_paid` and `invoice_paid` also fire for non-payments (an `EXPIRED` link, a QR that did not
-succeed), so a flow that records money starts with `if: event.paid`:
+A payment connector ends in a `payment` whose `gateway_ref` is held by one live payment at a time in rangka-apps
+(`gateway_ref_claim`): one invoice is never paid twice by a repeated callback, and a cancelled payment gives its id
+back. The flow below is for `xendit.va_paid`; the same steps serve `qr_paid` and `invoice_paid`, whose callbacks also
+arrive for non-payments (an `EXPIRED` link, a QR that did not succeed), which is what `if: event.paid` filters out.
 
 ```yaml
 # a site flow until ports land (contract 0002 ยงB); modules will call payment.* ports instead of xendit.*
@@ -31,9 +32,14 @@ on: xendit.va_paid
 if: event.paid            # the trigger fires for every callback; only a completed payment records money
 idempotency: event.gateway_ref
 steps:
-  - {find: sales_invoice, where: name == event.external_id, as: inv}
+  # a live payment already holds this gateway id: the callback came again, do nothing
+  - {find: payment, where: "gateway_ref == event.gateway_ref && docstatus != 2", as: done}
+  # only a submitted invoice (docstatus 1): a callback for a cancelled invoice (or its amended "-1") records nothing
+  - {find: sales_invoice, where: "name == event.external_id && docstatus == 1", as: inv}
+  # drafts already made for this invoice have not lowered outstanding yet: allocate only what is still open after them
+  - {find_all: payment, where: "docstatus == 0 && reference == event.external_id", as: drafts}
   - create: payment
-    if: inv != null
+    if: done == null && inv != null
     set:
       direction: "'receive'"
       customer: inv.customer
@@ -42,7 +48,13 @@ steps:
       gateway: "'xendit'"
       gateway_ref: event.gateway_ref
       reference: inv.name
-      allocations: "[{'sales_invoice': inv.name, 'amount': min(event.paid_amount, inv.outstanding)}]"
+      allocations: "min(event.paid_amount, inv.outstanding - drafts.map(p, p.allocated_total).sum()) > 0 ? [{'sales_invoice': inv.name, 'amount': min(event.paid_amount, inv.outstanding - drafts.map(p, p.allocated_total).sum())}] : []"
+    as: pay
+  # a payment made inside a flow does not run rangka-apps' claim flows (the kernel does not nest flows), so the flow
+  # claims the id itself; two callbacks racing both pass `done` and the unique claim refuses the second
+  - create: gateway_ref_claim
+    if: done == null && inv != null
+    set: {gateway_ref: event.gateway_ref, payment: pay.name}
 ```
 
 ## How a connector is used
