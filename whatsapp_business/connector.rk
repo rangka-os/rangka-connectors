@@ -37,6 +37,22 @@ triggers:
       text: item.text.body
       profile_name: value.contacts[0].profile.name
       at: item.timestamp
+  # Delivery receipts of messages we sent (sent, delivered, read, failed), so a reminder can be logged as delivered.
+  - name: message_status
+    label: {id: Status pesan terkirim}
+    via: webhook
+    verify:
+      signature:
+        header: X-Hub-Signature-256
+        alg: hmac-sha256
+        key: auth.app_secret
+    for_each: entry[].changes[].value.statuses[]
+    emit:
+      message_id: item.id
+      status: item.status
+      to: item.recipient_id
+      at: item.timestamp
+      error: item.errors[0].title
 actions:
   - name: send_template
     label: {id: Kirim pesan template}

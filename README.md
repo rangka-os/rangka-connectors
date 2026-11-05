@@ -15,10 +15,33 @@ Part of the Rangka family: [rangka-os](https://github.com/rangka-os/rangka-os) ย
 
 | Connector | Service | Triggers | Actions | Status |
 | --- | --- | --- | --- | --- |
-| [`whatsapp_business`](whatsapp_business/connector.rk) | Meta WhatsApp Cloud API | `message_received` (webhook, `X-Hub-Signature-256` checked) | `send_template` (with retries) | Spec |
+| [`whatsapp_business`](whatsapp_business/connector.rk) | Meta WhatsApp Cloud API | `message_received`, `message_status` (webhook, `X-Hub-Signature-256` checked) | `send_template` (with retries); collection templates in [templates.md](whatsapp_business/templates.md) | Spec |
+| [`xendit`](xendit/connector.rk) | Xendit (VA, QRIS, payment links; xenPlatform sub-accounts) | `va_paid`, `qr_paid`, `invoice_paid` (webhook, `x-callback-token` checked) | `create_fixed_va`, `create_qr_code`, `create_invoice`, `get_invoice` (with retries, idempotent on the invoice number) | Spec |
 
-Planned, in rough order: QRIS (Xendit, Midtrans), bank statements, e-Faktur / Coretax, Tokopedia, Shopee, TikTok Shop,
+Planned, in rough order: QRIS (Midtrans), bank statements, e-Faktur / Coretax, Tokopedia, Shopee, TikTok Shop,
 GoFood / GrabFood, Accurate / Jurnal import.
+
+A payment connector ends in a `payment` with a unique `gateway_ref` in rangka-apps (one invoice is never paid twice
+by a repeated callback):
+
+```yaml
+# a site flow until ports land (contract 0002 ยงB); modules will call payment.* ports instead of xendit.*
+on: xendit.va_paid
+idempotency: event.gateway_ref
+steps:
+  - {find: sales_invoice, where: name == event.external_id, as: inv}
+  - create: payment
+    if: inv != null
+    set:
+      direction: "'receive'"
+      customer: inv.customer
+      amount: event.paid_amount
+      method: event.method
+      gateway: "'xendit'"
+      gateway_ref: event.gateway_ref
+      reference: inv.name
+      allocations: "[{'sales_invoice': inv.name, 'amount': min(event.paid_amount, inv.outstanding)}]"
+```
 
 ## How a connector is used
 
