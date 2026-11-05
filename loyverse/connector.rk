@@ -1,7 +1,7 @@
 # yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/connector.json
 # Loyverse POS (free POS used by many small shops): receipts, stores, items and stock levels through the public
 # Loyverse API v1.0 with a personal access token (Back Office > Settings > Access tokens).
-# Status: spec. The kernel does not run connectors yet (contract 0002); until it does, rangka-apps imports the
+# Status: spec, no flow calls it yet. The kernel does not run connectors (contract 0002); until it does, rangka-apps imports the
 # "Receipts by item" export file (modules/outlet_sales/imports/loyverse_receipts). Field names follow Loyverse's
 # public API reference and have not been checked against a live account yet.
 # A refund is its own receipt with receipt_type REFUND; flows turn its lines into negative outlet_sales lines.
