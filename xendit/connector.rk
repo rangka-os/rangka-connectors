@@ -3,7 +3,12 @@
 # sub-account (header for-user-id). Every request uses the secret key as the Basic auth user name with an empty password.
 # Callbacks carry the account's callback token in the x-callback-token header (a static token, not an HMAC).
 # Every trigger emits gateway_ref (Xendit's payment id): flows use it as idempotency key and as payment.gateway_ref,
-# which is unique in rangka-apps, so a callback delivered twice cannot pay an invoice twice.
+# held by one live payment at a time in rangka-apps (gateway_ref_claim), so a callback delivered twice cannot pay an
+# invoice twice.
+# A trigger fires for every callback of its kind, not only for payments: Xendit sends the invoice callback for
+# EXPIRED links too, and a QR callback carries data.status. Every trigger therefore emits `paid` (true only for a
+# completed payment: VA always, QR SUCCEEDED, link PAID or SETTLED), and a flow that records money starts with
+# `if: event.paid` (the trigger format has no filter of its own). See the README example.
 # Test mode: a secret key starting with xnd_development_ talks to the same URLs; the dashboard simulates VA and QRIS
 # payments and sends the callbacks.
 name: xendit
@@ -38,6 +43,7 @@ triggers:
       paid_amount: amount
       paid_at: transaction_timestamp
       method: "'va'"
+      paid: 'true'
       bank_code: bank_code
       account_number: account_number
       sub_account: owner_id
@@ -53,6 +59,7 @@ triggers:
       paid_amount: data.amount
       paid_at: data.created
       status: data.status
+      paid: data.status == 'SUCCEEDED'
       method: "'qris'"
       sub_account: business_id
   - name: invoice_paid
@@ -65,9 +72,11 @@ triggers:
       gateway_ref: id
       external_id: external_id
       status: status
+      paid: status == 'PAID' || status == 'SETTLED'
       paid_amount: paid_amount
       paid_at: paid_at
-      method: payment_method
+      # Xendit's payment_method (BANK_TRANSFER, QR_CODE, EWALLET, ...) as rangka-apps payment.method
+      method: "payment_method == 'BANK_TRANSFER' ? 'va' : payment_method == 'QR_CODE' ? 'qris' : payment_method == 'EWALLET' ? 'ewallet' : 'other'"
       channel: payment_channel
       fee: fees_paid_amount
       sub_account: user_id
