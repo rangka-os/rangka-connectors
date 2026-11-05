@@ -108,7 +108,7 @@ actions:
       bank_code: bank_code
       status: status
     retry: {max: 5, backoff: exponential, on: [429, 500, 502, 503]}
-    idempotency: input.external_id
+    idempotency: input.external_id + ':' + string(input.amount)
   - name: create_qr_code
     label: {id: Buat QRIS dinamis}
     request:
@@ -131,7 +131,7 @@ actions:
       expires_at: expires_at
       status: status
     retry: {max: 5, backoff: exponential, on: [429, 500, 502, 503]}
-    idempotency: input.external_id
+    idempotency: input.external_id + ':' + string(input.amount)
   - name: create_invoice
     label: {id: Buat link bayar}
     request:
@@ -160,7 +160,7 @@ actions:
       expires_at: expiry_date
       status: status
     retry: {max: 5, backoff: exponential, on: [429, 500, 502, 503]}
-    idempotency: input.external_id
+    idempotency: input.external_id + ':' + string(input.amount)
   - name: get_invoice
     label: {id: Cek status link bayar}
     request:
