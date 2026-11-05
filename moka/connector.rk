@@ -1,0 +1,81 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/connector.json
+# Moka POS (GoTo): transactions, refunds, outlets and items through the Moka Connect API with OAuth 2.0
+# (authorization code; the owner approves Juragan in Moka Backoffice).
+# Status: spec. API access needs Moka's approval of the integration (developer application at Moka); the paths
+# below follow Moka's published API reference and must be confirmed once access is granted. The kernel does not run
+# connectors yet (contract 0002); until it does, rangka-apps imports the Item Details export
+# (modules/outlet_sales/imports/moka_item_details), whose headers were checked against real exports.
+name: moka
+label: {id: Moka POS}
+version: 0.1.0
+vendor: Moka (GoTo)
+docs: https://api.mokapos.com/docs
+auth:
+  type: oauth2
+  fields:
+    - name: client_id
+      label: {id: Client ID}
+    - name: client_secret
+      label: {id: Client secret}
+      secret: true
+    - name: access_token
+      label: {id: Access token}
+      secret: true
+      help: {id: Diisi setelah pemilik menyetujui Juragan di Moka Backoffice}
+    - name: refresh_token
+      label: {id: Refresh token}
+      secret: true
+triggers:
+  # Moka has no webhook for sales: a scheduled flow polls get_latest_transactions per outlet every 15 minutes and
+  # keeps the last `since` it saw; the transaction id is the idempotency key.
+  - name: transaction_created
+    label: {id: Transaksi baru}
+    via: poll
+    every: 15m
+    for_each: data.payments[]
+    emit:
+      transaction_id: item.id
+      outlet_id: item.outlet_id
+      receipt_no: item.payment_no
+      created_at: item.created_at
+      is_refunded: item.is_refunded
+      checkouts: item.checkouts
+      payment_type: item.payment_type
+      total_collected: item.total_collected
+actions:
+  - name: latest_transactions
+    label: {id: Ambil transaksi terbaru}
+    request:
+      method: GET
+      url: https://api.mokapos.com/v3/outlets/{input.outlet_id}/reports/get_latest_transactions
+      headers: {Authorization: 'Bearer {auth.access_token}'}
+      query: {since: '{input.since}', per_page: '100', page: '{input.page}'}
+    input:
+      - {name: outlet_id, type: data, required: true}
+      - {name: since, type: datetime, required: true}
+      - {name: page, type: int}
+    output: {payments: data.payments, next: data.completed}
+    retry: {max: 5, backoff: exponential, on: [429, 500, 502, 503]}
+  - name: list_outlets
+    label: {id: Daftar outlet}
+    request:
+      method: GET
+      url: https://api.mokapos.com/v1/businesses/outlets
+      headers: {Authorization: 'Bearer {auth.access_token}'}
+    output: {outlets: data}
+    retry: {max: 3, backoff: exponential, on: [429, 500, 502, 503]}
+  - name: list_items
+    label: {id: Daftar barang}
+    request:
+      method: GET
+      url: https://api.mokapos.com/v1/outlets/{input.outlet_id}/items
+      headers: {Authorization: 'Bearer {auth.access_token}'}
+      query: {per_page: '100', page: '{input.page}'}
+    input:
+      - {name: outlet_id, type: data, required: true}
+      - {name: page, type: int}
+    output: {items: data.items}
+    retry: {max: 5, backoff: exponential, on: [429, 500, 502, 503]}
+limits:
+  rate: per Moka partner agreement
+  note: {id: 'Akses API Moka lewat persetujuan integrasi dari Moka; ekspor file tetap jalan tanpa akses API'}

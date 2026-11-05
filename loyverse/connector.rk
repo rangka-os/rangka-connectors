@@ -1,0 +1,93 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/connector.json
+# Loyverse POS (free POS used by many small shops): receipts, stores, items and stock levels through the public
+# Loyverse API v1.0 with a personal access token (Back Office > Settings > Access tokens).
+# Status: spec, no flow calls it yet. The kernel does not run connectors (contract 0002); until it does, rangka-apps imports the
+# "Receipts by item" export file (modules/outlet_sales/imports/loyverse_receipts). Field names follow Loyverse's
+# public API reference and have not been checked against a live account yet.
+# A refund is its own receipt with receipt_type REFUND; flows turn its lines into negative outlet_sales lines.
+name: loyverse
+label: {id: Loyverse POS}
+version: 0.1.0
+vendor: Loyverse
+docs: https://developer.loyverse.com/docs/
+auth:
+  type: token
+  fields:
+    - name: access_token
+      label: {id: Access token}
+      secret: true
+      help: {id: 'Back Office Loyverse > Pengaturan > Token akses'}
+triggers:
+  # Loyverse posts {merchant_id, type, created_at, receipts: [...]} to the URL registered with create_webhook.
+  - name: receipt_updated
+    label: {id: Struk baru atau berubah}
+    via: webhook
+    for_each: receipts[]
+    emit:
+      receipt_number: item.receipt_number
+      receipt_type: item.receipt_type
+      receipt_date: item.receipt_date
+      store_id: item.store_id
+      total_money: item.total_money
+      total_discount: item.total_discount
+      line_items: item.line_items
+      payments: item.payments
+  - name: inventory_level_updated
+    label: {id: Stok berubah di Loyverse}
+    via: webhook
+    for_each: inventory_levels[]
+    emit:
+      variant_id: item.variant_id
+      store_id: item.store_id
+      in_stock: item.in_stock
+      updated_at: item.updated_at
+actions:
+  # A scheduled flow pulls one day per store: GET /receipts?store_id=&created_at_min=&created_at_max=&limit=250,
+  # following `cursor` while the answer has one.
+  - name: list_receipts
+    label: {id: Ambil struk}
+    request:
+      method: GET
+      url: https://api.loyverse.com/v1.0/receipts
+      headers: {Authorization: 'Bearer {auth.access_token}'}
+      query: {store_id: '{input.store_id}', created_at_min: '{input.since}', created_at_max: '{input.until}', limit: '250', cursor: '{input.cursor}'}
+    input:
+      - {name: store_id, type: data, required: true}
+      - {name: since, type: datetime, required: true}
+      - {name: until, type: datetime, required: true}
+      - {name: cursor, type: data}
+    output: {receipts: receipts, cursor: cursor}
+    retry: {max: 5, backoff: exponential, on: [429, 500, 502, 503]}
+  - name: list_stores
+    label: {id: Daftar toko}
+    request:
+      method: GET
+      url: https://api.loyverse.com/v1.0/stores
+      headers: {Authorization: 'Bearer {auth.access_token}'}
+    output: {stores: stores}
+    retry: {max: 3, backoff: exponential, on: [429, 500, 502, 503]}
+  - name: list_items
+    label: {id: Daftar barang}
+    request:
+      method: GET
+      url: https://api.loyverse.com/v1.0/items
+      headers: {Authorization: 'Bearer {auth.access_token}'}
+      query: {limit: '250', cursor: '{input.cursor}'}
+    input:
+      - {name: cursor, type: data}
+    output: {items: items, cursor: cursor}
+    retry: {max: 5, backoff: exponential, on: [429, 500, 502, 503]}
+  - name: create_webhook
+    label: {id: Daftarkan webhook}
+    request:
+      method: POST
+      url: https://api.loyverse.com/v1.0/webhooks
+      headers: {Authorization: 'Bearer {auth.access_token}'}
+      body: {url: '{input.url}', type: '{input.type}', status: ENABLED}
+    input:
+      - {name: url, type: data, required: true}
+      - {name: type, type: data, required: true, help: {id: 'receipts.update atau inventory_levels.update'}}
+    idempotency: input.type
+limits:
+  rate: 300 requests/min per token
+  note: {id: 'API Loyverse gratis; webhook dan token dibuat dari Back Office pemilik toko'}
