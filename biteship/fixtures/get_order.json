@@ -1,0 +1,2 @@
+{"success": true, "object": "order", "id": "ord-contoh-0001", "status": "dropping_off", "price": 18000, "reference_id": "SJ-2026-00001",
+ "courier": {"tracking_id": "trk-contoh-0001", "waybill_id": "WYB-CONTOH-0001", "company": "jne", "type": "reg"}}

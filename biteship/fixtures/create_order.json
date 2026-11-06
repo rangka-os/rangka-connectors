@@ -1,0 +1,8 @@
+{"success": true, "message": "Order successfully created", "object": "order", "id": "ord-contoh-0001", "draft_order_id": null,
+ "shipper": {"name": "Toko Contoh", "phone": "081100000000", "organization": "Toko Contoh"},
+ "origin": {"contact_name": "Gudang Contoh", "contact_phone": "081100000000", "address": "Jl. Contoh No. 1, Bandung", "area_id": "IDNP9IDNC23IDND0001", "postal_code": 40132},
+ "destination": {"contact_name": "Pelanggan Contoh", "contact_phone": "081300000000", "address": "Jl. Tujuan No. 2, Bandung", "area_id": "IDNP9IDNC23IDND0002", "postal_code": 40617},
+ "courier": {"tracking_id": "trk-contoh-0001", "waybill_id": "WYB-CONTOH-0001", "company": "jne", "type": "reg", "insurance": {"amount": 0, "fee": 0}, "routing_code": null},
+ "delivery": {"datetime": "2026-11-07T10:00+07:00", "type": "now"},
+ "reference_id": "SJ-2026-00001", "items": [{"name": "Mi goreng (dus)", "value": 110000, "quantity": 2, "weight": 4000}],
+ "currency": "IDR", "tax_lines": [], "price": 18000, "metadata": {}, "note": "", "status": "confirmed"}
