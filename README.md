@@ -17,6 +17,11 @@ Part of the Rangka family: [rangka-os](https://github.com/rangka-os/rangka-os) Â
 | --- | --- | --- | --- | --- |
 | [`whatsapp_business`](whatsapp_business/connector.rk) | Meta WhatsApp Cloud API | `message_received`, `message_status` (webhook, `X-Hub-Signature-256` checked) | `send_template` (with retries); collection templates in [templates.md](whatsapp_business/templates.md) | Spec |
 | [`xendit`](xendit/connector.rk) | Xendit (VA, QRIS, payment links; xenPlatform sub-accounts) | `va_paid`, `qr_paid`, `invoice_paid` (webhook, `x-callback-token` checked; every callback, `paid` marks a completed payment) | `create_fixed_va`, `create_qr_code`, `create_invoice`, `get_invoice` (with retries, idempotent on the invoice number and amount) | Spec |
+| [`loyverse`](loyverse/connector.rk) | Loyverse POS API v1.0 (personal access token) | `receipt_updated`, `inventory_level_updated` (webhooks) | `list_receipts`, `list_stores`, `list_items`, `create_webhook` | Spec (fields from the public API reference, not checked against a live account) |
+| [`moka`](moka/connector.rk) | Moka POS Connect API (OAuth 2.0) | `transaction_created` (poll every 15 min) | `latest_transactions`, `list_outlets`, `list_items` | Spec (paths to confirm once Moka approves API access) |
+
+Until the kernel runs connectors, the retail and F&B apps read POS data from export files (rangka-apps
+`moka_item_details`, `loyverse_receipts`, `pos_sales_file`); the two POS specs above are what a scheduled flow will call.
 
 Planned, in rough order: QRIS (Midtrans), bank statements, e-Faktur / Coretax, Tokopedia, Shopee, TikTok Shop,
 GoFood / GrabFood, Accurate / Jurnal import.
