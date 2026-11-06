@@ -1,0 +1,15 @@
+{
+  "event": "order.status",
+  "courier_tracking_id": "trk-contoh-0002",
+  "courier_waybill_id": null,
+  "courier_company": "sicepat",
+  "courier_type": "reg",
+  "courier_driver_name": null,
+  "courier_driver_phone": null,
+  "courier_driver_photo_url": null,
+  "courier_driver_plate_number": null,
+  "courier_link": null,
+  "order_id": "ord-contoh-0002",
+  "order_price": 15000,
+  "status": "courier_not_found"
+}

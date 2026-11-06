@@ -1,0 +1,7 @@
+{"success": true, "message": "Successfully get tracking info", "object": "tracking", "id": "trk-contoh-0001", "waybill_id": "WYB-CONTOH-0001",
+ "courier": {"company": "jne", "driver_name": null, "driver_phone": null, "driver_photo_url": null, "driver_plate_number": null},
+ "origin": {"contact_name": "Gudang Contoh", "address": "Jl. Contoh No. 1, Bandung"},
+ "destination": {"contact_name": "Pelanggan Contoh", "address": "Jl. Tujuan No. 2, Bandung"},
+ "history": [{"note": "Paket dijemput kurir", "status": "picked", "updated_at": "2026-11-07T11:00:00+07:00", "service_type": "reg"},
+             {"note": "Paket diterima", "status": "delivered", "updated_at": "2026-11-08T14:00:00+07:00", "service_type": "reg"}],
+ "link": "https://track.example.test/WYB-CONTOH-0001", "order_id": "ord-contoh-0001", "status": "delivered"}

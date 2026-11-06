@@ -1,0 +1,11 @@
+{
+  "event": "order.price",
+  "order_id": "ord-contoh-0001",
+  "courier_tracking_id": "trk-contoh-0001",
+  "courier_waybill_id": "WYB-CONTOH-0001",
+  "status": "picked",
+  "price": 27000,
+  "shippment_fee": 27000,
+  "cash_on_delivery_fee": 0,
+  "proof_of_delivery_fee": 0
+}

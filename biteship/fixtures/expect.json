@@ -1,0 +1,9 @@
+{
+  "order_status.json": {"shipment_ref": "ord-contoh-0001", "waybill": "WYB-CONTOH-0001", "status": "delivered", "price": 18000, "delivered": true, "failed": false, "on_the_way": false},
+  "order_status_cancelled.json": {"shipment_ref": "ord-contoh-0002", "waybill": null, "delivered": false, "failed": true},
+  "order_price.json": {"price": 27000, "shipping_fee": 27000, "status": "picked"},
+  "order_waybill.json": {"waybill": "WYB-CONTOH-0001", "tracking_id": "trk-contoh-0001"},
+  "create_order.json": {"shipment_ref": "ord-contoh-0001", "tracking_id": "trk-contoh-0001", "waybill": "WYB-CONTOH-0001", "price": 18000, "status": "confirmed", "reference": "SJ-2026-00001"},
+  "cancel_order.json": {"status": "cancelled"},
+  "get_tracking.json": {"status": "delivered", "courier": "jne"}
+}

@@ -1,0 +1,239 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/connector.json
+# Biteship (Indonesia): one shipping aggregator for many couriers (JNE, J&T, SiCepat, AnterAja, GoSend, Grab Express,
+# Paxel and more): area search, courier rates, shipping orders (pickup or drop off, COD, insurance), tracking and
+# status webhooks. Every request sends the API key in the Authorization header (as is or as Bearer; both accepted).
+# Test mode: a key starting with biteship_test. talks to the same URLs; test orders are simulated from the dashboard
+# (to delivered or cancelled) and send the same webhooks. Live keys start with biteship_live.
+# Status: spec, no flow calls it yet. The kernel does not run connectors (contract 0002). Fields follow Biteship's public
+# API reference (biteship.com/docs/api: rates/retrieve, orders/create, orders/delete, trackings/retrieve,
+# webhook/overview) and have not been checked against a live account; the query parameters of maps/areas are to confirm.
+# Synthetic payloads of every webhook and answer are in fixtures/ (tests/check_fixtures.py checks the emits against them).
+# Webhooks: the owner adds one webhook per event in the dashboard (Integrations > Webhook) with the URL of the trigger
+# and a Headers Signature Key / Secret. Biteship sends that pair as an HTTP header on every request; the key must be
+# x-biteship-secret (the header verify below reads), the secret is auth.webhook_secret. Deliveries can repeat: a flow
+# keys its work on shipment_ref + status (order.status), shipment_ref + price (order.price) or shipment_ref + waybill.
+name: biteship
+label: {id: Biteship}
+version: 0.1.0
+vendor: Biteship
+docs: https://biteship.com/docs/api
+auth:
+  type: token
+  fields:
+    - name: api_key
+      label: {id: API key}
+      secret: true
+      help: {id: 'Dashboard Biteship > Integrasi > API Key. Kunci biteship_test. untuk mode test.'}
+    - name: webhook_secret
+      label: {id: Headers signature secret}
+      secret: true
+      generate: true
+      help: {id: 'Isi di Dashboard Biteship > Integrasi > Webhook: Headers Signature Key x-biteship-secret, Secret nilai ini'}
+settings:
+  - name: couriers
+    label: {id: Kurir yang ditawarkan}
+    default: "'jne,jnt,sicepat,anteraja,gojek,grab'"
+    help: {id: 'Kode kurir Biteship, dipisah koma'}
+  - name: origin_area_id
+    label: {id: Area asal (gudang)}
+    help: {id: 'ID area Biteship gudang pengirim, dari aksi Cari area'}
+triggers:
+  # order.status: every change of a shipment's status, with the courier and (instant couriers) the driver
+  - name: order_status
+    label: {id: Status pengiriman berubah}
+    via: webhook
+    verify:
+      header: x-biteship-secret
+      equals: auth.webhook_secret
+    emit:
+      event: event
+      shipment_ref: order_id
+      tracking_id: courier_tracking_id
+      waybill: courier_waybill_id
+      courier: courier_company
+      service: courier_type
+      status: status
+      price: order_price
+      driver_name: courier_driver_name
+      driver_phone: courier_driver_phone
+      driver_plate: courier_driver_plate_number
+      link: courier_link
+      # what a flow acts on without knowing Biteship's status list (help center: confirmed, scheduled, allocated,
+      # picking_up, picked, dropping_off, delivered, on_hold, courier_not_found, cancelled, return_in_transit, returned)
+      delivered: status == 'delivered'
+      failed: status == 'cancelled' || status == 'courier_not_found' || status == 'return_in_transit' || status == 'returned'
+      on_the_way: status == 'picked' || status == 'dropping_off'
+  # order.price: the courier re-weighed the parcel; the shipping cost the business pays changed
+  - name: order_price
+    label: {id: Ongkir berubah}
+    via: webhook
+    verify:
+      header: x-biteship-secret
+      equals: auth.webhook_secret
+    emit:
+      event: event
+      shipment_ref: order_id
+      tracking_id: courier_tracking_id
+      waybill: courier_waybill_id
+      status: status
+      price: price
+      shipping_fee: shippment_fee   # sic: Biteship's field name
+      cod_fee: cash_on_delivery_fee
+      pod_fee: proof_of_delivery_fee
+  # order.waybill_id: the courier issued or changed the airway bill (resi), usually after pickup
+  - name: order_waybill
+    label: {id: Nomor resi terbit}
+    via: webhook
+    verify:
+      header: x-biteship-secret
+      equals: auth.webhook_secret
+    emit:
+      event: event
+      shipment_ref: order_id
+      tracking_id: courier_tracking_id
+      waybill: courier_waybill_id
+      status: status
+actions:
+  - name: search_areas
+    label: {id: Cari area}
+    request:
+      method: GET
+      url: https://api.biteship.com/v1/maps/areas
+      headers: {Authorization: '{auth.api_key}'}
+      query: {countries: ID, input: '{input.query}', type: single}
+    input:
+      - {name: query, type: data, required: true, help: {id: 'Nama kecamatan, kota atau kode pos'}}
+    output: {areas: areas}
+    retry: {max: 3, backoff: exponential, on: [429, 500, 502, 503]}
+  - name: get_rates
+    label: {id: Cek ongkir}
+    request:
+      method: POST
+      url: https://api.biteship.com/v1/rates/couriers
+      headers: {Authorization: '{auth.api_key}'}
+      body:
+        origin_area_id: '{input.origin_area_id}'
+        destination_area_id: '{input.destination_area_id}'
+        destination_postal_code: '{input.destination_postal_code}'
+        couriers: '{input.couriers}'
+        destination_cash_on_delivery: '{input.cod_amount}'
+        destination_cash_on_delivery_type: '{input.cod_type}'
+        courier_insurance: '{input.insured_value}'
+        items: '{input.items}'
+    input:
+      - {name: origin_area_id, type: data, default: settings.origin_area_id}
+      - {name: destination_area_id, type: data}
+      - {name: destination_postal_code, type: int, help: {id: 'Dipakai kalau area tujuan kosong'}}
+      - {name: couriers, type: data, default: settings.couriers}
+      - {name: cod_amount, type: currency, help: {id: 'Nilai COD, maksimal Rp 15.000.000'}}
+      - {name: cod_type, type: data, help: {id: '3_days, 5_days atau 7_days; wajib kalau ada COD'}}
+      - {name: insured_value, type: currency}
+      - {name: items, type: json, required: true, help: {id: 'Daftar barang: name, value, quantity, weight (gram), length/width/height (cm)'}}
+    # one row per courier service: courier_code, courier_service_code, price (final, with insurance and COD fees),
+    # shipment_duration_range + shipment_duration_unit, available_for_cash_on_delivery
+    output: {pricing: pricing}
+    retry: {max: 3, backoff: exponential, on: [429, 500, 502, 503]}
+  - name: create_order
+    label: {id: Buat pengiriman}
+    request:
+      method: POST
+      url: https://api.biteship.com/v1/orders
+      headers: {Authorization: '{auth.api_key}'}
+      body:
+        reference_id: '{input.reference}'
+        shipper_contact_name: '{input.shipper_name}'
+        shipper_contact_phone: '{input.shipper_phone}'
+        shipper_organization: '{input.shipper_organization}'
+        origin_contact_name: '{input.origin_contact_name}'
+        origin_contact_phone: '{input.origin_contact_phone}'
+        origin_address: '{input.origin_address}'
+        origin_area_id: '{input.origin_area_id}'
+        origin_collection_method: '{input.collection_method}'
+        destination_contact_name: '{input.destination_contact_name}'
+        destination_contact_phone: '{input.destination_contact_phone}'
+        destination_address: '{input.destination_address}'
+        destination_area_id: '{input.destination_area_id}'
+        destination_postal_code: '{input.destination_postal_code}'
+        destination_note: '{input.destination_note}'
+        destination_cash_on_delivery: '{input.cod_amount}'
+        destination_cash_on_delivery_type: '{input.cod_type}'
+        courier_company: '{input.courier_company}'
+        courier_type: '{input.courier_type}'
+        courier_insurance: '{input.insured_value}'
+        delivery_type: '{input.delivery_type}'
+        order_note: '{input.note}'
+        items: '{input.items}'
+    input:
+      - {name: reference, type: data, required: true, help: {id: 'Nomor surat jalan atau faktur; Biteship menolak reference_id yang sudah dipakai'}}
+      - {name: shipper_name, type: data}
+      - {name: shipper_phone, type: data}
+      - {name: shipper_organization, type: data}
+      - {name: origin_contact_name, type: data, required: true}
+      - {name: origin_contact_phone, type: data, required: true}
+      - {name: origin_address, type: text, required: true}
+      - {name: origin_area_id, type: data, default: settings.origin_area_id}
+      - {name: collection_method, type: data, default: "'pickup'", help: {id: 'pickup (kurir menjemput) atau drop_off'}}
+      - {name: destination_contact_name, type: data, required: true}
+      - {name: destination_contact_phone, type: data, required: true}
+      - {name: destination_address, type: text, required: true}
+      - {name: destination_area_id, type: data}
+      - {name: destination_postal_code, type: int}
+      - {name: destination_note, type: data}
+      - {name: cod_amount, type: currency}
+      - {name: cod_type, type: data}
+      - {name: courier_company, type: data, required: true, help: {id: 'courier_code dari Cek ongkir, misalnya jne'}}
+      - {name: courier_type, type: data, required: true, help: {id: 'courier_service_code dari Cek ongkir, misalnya reg'}}
+      - {name: insured_value, type: currency}
+      - {name: delivery_type, type: data, default: "'now'", help: {id: 'now atau scheduled'}}
+      - {name: note, type: data}
+      - {name: items, type: json, required: true}
+    output:
+      shipment_ref: id
+      tracking_id: courier.tracking_id
+      waybill: courier.waybill_id
+      courier: courier.company
+      service: courier.type
+      price: price
+      status: status
+      reference: reference_id
+    retry: {max: 3, backoff: exponential, on: [429, 500, 502, 503]}
+    # Biteship refuses a second order with the same reference_id, so a retried call cannot ship twice
+    idempotency: input.reference
+  - name: get_order
+    label: {id: Ambil data pengiriman}
+    request:
+      method: GET
+      url: https://api.biteship.com/v1/orders/{input.shipment_ref}
+      headers: {Authorization: '{auth.api_key}'}
+    input:
+      - {name: shipment_ref, type: data, required: true}
+    output: {status: status, price: price, waybill: courier.waybill_id, tracking_id: courier.tracking_id}
+    retry: {max: 3, backoff: exponential, on: [429, 500, 502, 503]}
+  - name: cancel_order
+    label: {id: Batalkan pengiriman}
+    request:
+      method: POST
+      url: https://api.biteship.com/v1/orders/{input.shipment_ref}/cancel
+      headers: {Authorization: '{auth.api_key}'}
+      body:
+        cancellation_reason_code: '{input.reason_code}'
+        cancellation_reason: '{input.reason}'
+    input:
+      - {name: shipment_ref, type: data, required: true}
+      - {name: reason_code, type: data, default: "'others'", help: {id: 'change_courier, pickup_delay, change_address atau others'}}
+      - {name: reason, type: data}
+    output: {status: status, reason_code: cancellation_reason_code}
+    retry: {max: 3, backoff: exponential, on: [429, 500, 502, 503]}
+    idempotency: "'cancel:' + input.shipment_ref"
+  - name: get_tracking
+    label: {id: Lacak paket}
+    request:
+      method: GET
+      url: https://api.biteship.com/v1/trackings/{input.tracking_id}
+      headers: {Authorization: '{auth.api_key}'}
+    input:
+      - {name: tracking_id, type: data, required: true}
+    output: {status: status, waybill: waybill_id, courier: courier.company, history: history, link: link}
+    retry: {max: 3, backoff: exponential, on: [429, 500, 502, 503]}
+limits:
+  note: {id: 'Order test (kunci biteship_test.) tidak dikirim kurir dan tidak ditagih; statusnya disimulasikan dari dashboard'}
