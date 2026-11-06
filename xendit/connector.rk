@@ -1,0 +1,179 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/connector.json
+# Xendit (Indonesia): fixed virtual accounts, dynamic QRIS and payment links, for one business or a xenPlatform
+# sub-account (header for-user-id). Every request uses the secret key as the Basic auth user name with an empty password.
+# Callbacks carry the account's callback token in the x-callback-token header (a static token, not an HMAC).
+# Every trigger emits gateway_ref (Xendit's payment id): flows use it as idempotency key and as payment.gateway_ref,
+# held by one live payment at a time in rangka-apps (gateway_ref_claim), so a callback delivered twice cannot pay an
+# invoice twice.
+# A trigger fires for every callback of its kind, not only for payments: Xendit sends the invoice callback for
+# EXPIRED links too, and a QR callback carries event (qr.payment, qr.refund) and data.status. Every trigger therefore emits `paid` (true only for a
+# completed payment: VA always, QR qr.payment SUCCEEDED, link PAID or SETTLED), and a flow that records money starts with
+# `if: event.paid` (the trigger format has no filter of its own). See the README example.
+# Test mode: a secret key starting with xnd_development_ talks to the same URLs; the dashboard simulates VA and QRIS
+# payments and sends the callbacks.
+name: xendit
+label: {id: Xendit}
+version: 0.1.0
+vendor: Xendit
+docs: https://developers.xendit.co/api-reference/
+auth:
+  type: basic
+  fields:
+    - name: secret_key
+      label: {id: Secret key}
+      secret: true
+      help: {id: 'Dashboard Xendit > Settings > API keys. Kunci xnd_development_ untuk mode test.'}
+    - name: callback_token
+      label: {id: Callback verification token}
+      secret: true
+      help: {id: Dashboard Xendit > Settings > Callbacks. Dipakai memeriksa header x-callback-token}
+    - name: for_user_id
+      label: {id: ID sub-account xenPlatform}
+      help: {id: Kosongkan kalau akun Xendit milik usaha ini sendiri}
+triggers:
+  - name: va_paid
+    label: {id: Virtual account dibayar}
+    via: webhook
+    verify:
+      header: x-callback-token
+      equals: auth.callback_token
+    emit:
+      gateway_ref: payment_id
+      external_id: external_id
+      paid_amount: amount
+      paid_at: transaction_timestamp
+      method: "'va'"
+      paid: 'true'
+      bank_code: bank_code
+      account_number: account_number
+      sub_account: owner_id
+  - name: qr_paid
+    label: {id: QRIS dibayar}
+    via: webhook
+    verify:
+      header: x-callback-token
+      equals: auth.callback_token
+    emit:
+      gateway_ref: data.id
+      external_id: data.reference_id
+      paid_amount: data.amount
+      paid_at: data.created
+      status: data.status
+      paid: event == 'qr.payment' && data.status == 'SUCCEEDED'
+      method: "'qris'"
+      sub_account: business_id
+  - name: invoice_paid
+    label: {id: Link bayar dibayar}
+    via: webhook
+    verify:
+      header: x-callback-token
+      equals: auth.callback_token
+    emit:
+      gateway_ref: id
+      external_id: external_id
+      status: status
+      paid: status == 'PAID' || status == 'SETTLED'
+      paid_amount: paid_amount
+      paid_at: paid_at
+      # Xendit's payment_method (BANK_TRANSFER, QR_CODE, EWALLET, ...) as rangka-apps payment.method
+      method: "payment_method == 'BANK_TRANSFER' ? 'va' : payment_method == 'QR_CODE' ? 'qris' : payment_method == 'EWALLET' ? 'ewallet' : 'other'"
+      channel: payment_channel
+      fee: fees_paid_amount
+      sub_account: user_id
+actions:
+  - name: create_fixed_va
+    label: {id: Buat virtual account}
+    request:
+      method: POST
+      url: https://api.xendit.co/callback_virtual_accounts
+      headers: {for-user-id: '{auth.for_user_id}'}
+      body:
+        external_id: '{input.external_id}'
+        bank_code: '{input.bank_code}'
+        name: '{input.customer_name}'
+        expected_amount: '{input.amount}'
+        is_closed: '{input.amount > 0}'
+        is_single_use: '{input.single_use}'
+        expiration_date: '{input.expires_at}'
+    input:
+      - {name: external_id, type: data, required: true, help: {id: Nomor faktur}}
+      - {name: bank_code, type: data, required: true, help: {id: 'BCA, BNI, BRI, MANDIRI, PERMATA, BSI, CIMB'}}
+      - {name: customer_name, type: data, required: true}
+      - {name: amount, type: currency, help: {id: 'Kosong atau 0: VA terbuka, nominal bebas'}}
+      - {name: single_use, type: check}
+      - {name: expires_at, type: datetime}
+    output:
+      gateway_ref: id
+      account_number: account_number
+      bank_code: bank_code
+      status: status
+    retry: {max: 5, backoff: exponential, on: [429, 500, 502, 503]}
+    idempotency: input.external_id + ':' + string(input.amount)
+  - name: create_qr_code
+    label: {id: Buat QRIS dinamis}
+    request:
+      method: POST
+      url: https://api.xendit.co/qr_codes
+      headers: {api-version: '2022-07-31', for-user-id: '{auth.for_user_id}'}
+      body:
+        reference_id: '{input.external_id}'
+        type: DYNAMIC
+        currency: IDR
+        amount: '{input.amount}'
+        expires_at: '{input.expires_at}'
+    input:
+      - {name: external_id, type: data, required: true}
+      - {name: amount, type: currency, required: true}
+      - {name: expires_at, type: datetime}
+    output:
+      gateway_ref: id
+      qr_string: qr_string
+      expires_at: expires_at
+      status: status
+    retry: {max: 5, backoff: exponential, on: [429, 500, 502, 503]}
+    idempotency: input.external_id + ':' + string(input.amount)
+  - name: create_invoice
+    label: {id: Buat link bayar}
+    request:
+      method: POST
+      url: https://api.xendit.co/v2/invoices
+      headers: {for-user-id: '{auth.for_user_id}'}
+      body:
+        external_id: '{input.external_id}'
+        amount: '{input.amount}'
+        description: '{input.description}'
+        invoice_duration: '{input.duration_seconds}'
+        customer:
+          given_names: '{input.customer_name}'
+          mobile_number: '{input.phone}'
+        currency: IDR
+    input:
+      - {name: external_id, type: data, required: true}
+      - {name: amount, type: currency, required: true}
+      - {name: description, type: data}
+      - {name: customer_name, type: data}
+      - {name: phone, type: phone}
+      - {name: duration_seconds, type: int, default: '604800'}
+    output:
+      gateway_ref: id
+      url: invoice_url
+      expires_at: expiry_date
+      status: status
+    retry: {max: 5, backoff: exponential, on: [429, 500, 502, 503]}
+    idempotency: input.external_id + ':' + string(input.amount)
+  - name: get_invoice
+    label: {id: Cek status link bayar}
+    request:
+      method: GET
+      url: https://api.xendit.co/v2/invoices/{input.gateway_ref}
+      headers: {for-user-id: '{auth.for_user_id}'}
+    input:
+      - {name: gateway_ref, type: data, required: true}
+    output:
+      status: status
+      paid_amount: paid_amount
+      paid_at: paid_at
+    retry: {max: 3, backoff: exponential, on: [429, 500, 502, 503]}
+    idempotency: input.gateway_ref
+limits:
+  note: {id: 'Biaya per transaksi VA dan QRIS dipotong Xendit sebelum settlement ke rekening usaha.'}
