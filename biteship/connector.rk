@@ -10,7 +10,8 @@
 # Synthetic payloads of every webhook and answer are in fixtures/ (tests/check_fixtures.py checks the emits against them).
 # Webhooks: the owner adds one webhook per event in the dashboard (Integrations > Webhook) with the URL of the trigger
 # and a Headers Signature Key / Secret. Biteship sends that pair as an HTTP header on every request; the key must be
-# x-biteship-secret (the header verify below reads), the secret is auth.webhook_secret. Deliveries can repeat: a flow
+# x-biteship-secret (the header verify below reads; the name is ours, chosen in the dashboard, not fixed by Biteship;
+# the header pairing is from help.biteship.com, to confirm on a test account), the secret is auth.webhook_secret. Deliveries can repeat: a flow
 # keys its work on shipment_ref + status (order.status), shipment_ref + price (order.price) or shipment_ref + waybill.
 name: biteship
 label: {id: Biteship}
@@ -58,7 +59,8 @@ triggers:
       driver_phone: courier_driver_phone
       driver_plate: courier_driver_plate_number
       link: courier_link
-      # what a flow acts on without knowing Biteship's status list (help center: confirmed, scheduled, allocated,
+      # what a flow acts on without knowing Biteship's status list (help.biteship.com shipping statuses, not in the API
+      # reference; to confirm on a test account: confirmed, scheduled, allocated,
       # picking_up, picked, dropping_off, delivered, on_hold, courier_not_found, cancelled, return_in_transit, returned)
       delivered: status == 'delivered'
       failed: status == 'cancelled' || status == 'courier_not_found' || status == 'return_in_transit' || status == 'returned'

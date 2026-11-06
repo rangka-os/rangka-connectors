@@ -3,6 +3,8 @@
 
     python3 tests/check_fixtures.py [connector ...]     # default: every <name>/fixtures/ in this repo
 
+Needs PyYAML (pip install pyyaml), as the rangka-os validator does.
+
 For a connector with a fixtures/ folder:
 - every trigger has at least one fixture (<trigger>.json or <trigger>_<case>.json), every action with an output one
   (<action>.json, the answer of the API);

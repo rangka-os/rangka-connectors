@@ -21,7 +21,7 @@ Part of the Rangka family: [rangka-os](https://github.com/rangka-os/rangka-os) Â
 | [`moka`](moka/connector.rk) | Moka POS Connect API (OAuth 2.0) | `transaction_created` (poll every 15 min) | `latest_transactions`, `list_outlets`, `list_items` | Spec (paths to confirm once Moka approves API access) |
 | [`biteship`](biteship/connector.rk) | Biteship shipping aggregator (JNE, J&T, SiCepat, AnterAja, GoSend, Grab and more) | `order_status`, `order_price`, `order_waybill` (webhooks, `x-biteship-secret` header checked; `delivered`/`failed`/`on_the_way` derived from the status) | `search_areas`, `get_rates`, `create_order` (idempotent on the reference), `get_order`, `cancel_order`, `get_tracking` | Spec (public API reference; synthetic fixtures in `biteship/fixtures`, checked by `tests/check_fixtures.py`; no account used) |
 
-Specs with a `fixtures/` folder are checked without network or account: `python3 tests/check_fixtures.py` resolves
+Specs with a `fixtures/` folder are checked without network or account: `python3 tests/check_fixtures.py` (needs PyYAML) resolves
 every emit and output against the synthetic payloads and the values pinned in `fixtures/expect.json`.
 
 Until the kernel runs connectors, the retail and F&B apps read POS data from export files (rangka-apps
