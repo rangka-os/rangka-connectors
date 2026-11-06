@@ -34,6 +34,8 @@ A payment connector ends in a `payment` whose `gateway_ref` is held by one live 
 (`gateway_ref_claim`): one invoice is never paid twice by a repeated callback, and a cancelled payment gives its id
 back. The flow below is for `xendit.va_paid`; the same steps serve `qr_paid` and `invoice_paid`, whose callbacks also
 arrive for non-payments (an `EXPIRED` link, a QR that did not succeed), which is what `if: event.paid` filters out.
+rangka-apps ships these steps as `modules/payments/flows/payment_from_xendit_{va,qr,invoice}.rk` (ready, not active until
+the kernel runs connectors; day_one feeds them synthetic callbacks through `POST /api/v1/flows/<name>/run`).
 
 ```yaml
 # a site flow until ports land (contract 0002 §B); modules will call payment.* ports instead of xendit.*
