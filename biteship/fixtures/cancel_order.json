@@ -1,0 +1,1 @@
+{"success": true, "message": "Order successfully deleted", "object": "order", "id": "ord-contoh-0002", "status": "cancelled", "cancellation_reason_code": "others", "cancellation_reason": "Salah alamat"}

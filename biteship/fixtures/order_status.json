@@ -1,0 +1,15 @@
+{
+  "event": "order.status",
+  "courier_tracking_id": "trk-contoh-0001",
+  "courier_waybill_id": "WYB-CONTOH-0001",
+  "courier_company": "jne",
+  "courier_type": "reg",
+  "courier_driver_name": "Kurir Contoh",
+  "courier_driver_phone": "081200000000",
+  "courier_driver_photo_url": "",
+  "courier_driver_plate_number": "D 0000 XX",
+  "courier_link": "https://track.example.test/WYB-CONTOH-0001",
+  "order_id": "ord-contoh-0001",
+  "order_price": 18000,
+  "status": "delivered"
+}
