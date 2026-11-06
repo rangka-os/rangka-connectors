@@ -15,15 +15,58 @@ Part of the Rangka family: [rangka-os](https://github.com/rangka-os/rangka-os) ย
 
 | Connector | Service | Triggers | Actions | Status |
 | --- | --- | --- | --- | --- |
-| [`whatsapp_business`](whatsapp_business/connector.rk) | Meta WhatsApp Cloud API | `message_received` (webhook, `X-Hub-Signature-256` checked) | `send_template` (with retries) | Spec |
+| [`whatsapp_business`](whatsapp_business/connector.rk) | Meta WhatsApp Cloud API | `message_received`, `message_status` (webhook, `X-Hub-Signature-256` checked) | `send_template` (with retries); collection templates in [templates.md](whatsapp_business/templates.md) | Spec |
+| [`xendit`](xendit/connector.rk) | Xendit (VA, QRIS, payment links; xenPlatform sub-accounts) | `va_paid`, `qr_paid`, `invoice_paid` (webhook, `x-callback-token` checked; every callback, `paid` marks a completed payment) | `create_fixed_va`, `create_qr_code`, `create_invoice`, `get_invoice` (with retries, idempotent on the invoice number and amount) | Spec |
 | [`loyverse`](loyverse/connector.rk) | Loyverse POS API v1.0 (personal access token) | `receipt_updated`, `inventory_level_updated` (webhooks) | `list_receipts`, `list_stores`, `list_items`, `create_webhook` | Spec (fields from the public API reference, not checked against a live account) |
 | [`moka`](moka/connector.rk) | Moka POS Connect API (OAuth 2.0) | `transaction_created` (poll every 15 min) | `latest_transactions`, `list_outlets`, `list_items` | Spec (paths to confirm once Moka approves API access) |
 
 Until the kernel runs connectors, the retail and F&B apps read POS data from export files (rangka-apps
 `moka_item_details`, `loyverse_receipts`, `pos_sales_file`); the two POS specs above are what a scheduled flow will call.
 
-Planned, in rough order: QRIS (Xendit, Midtrans), bank statements, e-Faktur / Coretax, Tokopedia, Shopee, TikTok Shop,
+Planned, in rough order: QRIS (Midtrans), bank statements, e-Faktur / Coretax, Tokopedia, Shopee, TikTok Shop,
 GoFood / GrabFood, Accurate / Jurnal import.
+
+A payment connector ends in a `payment` whose `gateway_ref` is held by one live payment at a time in rangka-apps
+(`gateway_ref_claim`): one invoice is never paid twice by a repeated callback, and a cancelled payment gives its id
+back. The flow below is for `xendit.va_paid`; the same steps serve `qr_paid` and `invoice_paid`, whose callbacks also
+arrive for non-payments (an `EXPIRED` link, a QR that did not succeed), which is what `if: event.paid` filters out.
+
+```yaml
+# a site flow until ports land (contract 0002 ยงB); modules will call payment.* ports instead of xendit.*
+on: xendit.va_paid
+if: event.paid            # the trigger fires for every callback; only a completed payment records money
+idempotency: event.gateway_ref
+steps:
+  # a live payment already holds this gateway id: the callback came again, do nothing (the flow's `idempotency:` is
+  # read but not enforced by the kernel yet, so this step and the claim below are the guard)
+  - {find: payment, where: "gateway_ref == event.gateway_ref && docstatus != 2", as: done}
+  # only a submitted invoice (docstatus 1): a callback for a cancelled invoice (or its amended "-1") records nothing
+  - {find: sales_invoice, where: "name == event.external_id && docstatus == 1", as: inv}
+  # drafts already made for this invoice have not lowered outstanding yet: allocate only what is still open after them
+  - {find_all: payment, where: "docstatus == 0 && reference == event.external_id", as: drafts}
+  - create: payment
+    if: done == null && inv != null
+    set:
+      direction: "'receive'"
+      customer: inv.customer
+      amount: event.paid_amount
+      method: event.method
+      gateway: "'xendit'"
+      gateway_ref: event.gateway_ref
+      reference: inv.name
+      allocations: "min(event.paid_amount, inv.outstanding - drafts.map(p, p.allocated_total).sum()) > 0 ? [{'sales_invoice': inv.name, 'amount': min(event.paid_amount, inv.outstanding - drafts.map(p, p.allocated_total).sum())}] : []"
+    as: pay
+  # a payment made inside a flow does not run rangka-apps' claim flows (the kernel does not nest flows), so the flow
+  # claims the id itself, as payment_gateway_claim_created does: a claim left by a deleted draft is taken over, else
+  # a new claim, which the unique index refuses for the second of two racing callbacks
+  - {find: gateway_ref_claim, where: gateway_ref == event.gateway_ref, as: held}
+  - update: held
+    if: done == null && inv != null && held != null
+    set: {payment: pay.name}
+  - create: gateway_ref_claim
+    if: done == null && inv != null && held == null
+    set: {gateway_ref: event.gateway_ref, payment: pay.name}
+```
 
 ## How a connector is used
 
