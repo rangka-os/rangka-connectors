@@ -7,6 +7,11 @@
 # A refund is its own receipt with receipt_type REFUND; flows turn its lines into negative outlet_sales lines.
 name: loyverse
 label: {id: Loyverse POS}
+summary:
+  id: Ambil struk, toko, barang dan stok dari kasir Loyverse.
+  en: Pull receipts, stores, items and stock from Loyverse POS.
+category: sales
+icon: store-2-line
 version: 0.1.0
 vendor: Loyverse
 docs: https://developer.loyverse.com/docs/
