@@ -13,6 +13,11 @@
 # payments and sends the callbacks.
 name: xendit
 label: {id: Xendit}
+summary:
+  id: Terima pembayaran lewat virtual account, QRIS dan link pembayaran Xendit.
+  en: Take payments through Xendit virtual accounts, QRIS and payment links.
+category: payments
+icon: secure-payment-line
 version: 0.1.0
 vendor: Xendit
 docs: https://developers.xendit.co/api-reference/

@@ -7,6 +7,11 @@
 # (modules/outlet_sales/imports/moka_item_details), whose headers were checked against real exports.
 name: moka
 label: {id: Moka POS}
+summary:
+  id: Ambil transaksi, refund, outlet dan barang dari kasir Moka.
+  en: Pull transactions, refunds, outlets and items from Moka POS.
+category: sales
+icon: store-2-line
 version: 0.1.0
 vendor: Moka (GoTo)
 docs: https://api.mokapos.com/docs

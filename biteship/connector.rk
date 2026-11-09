@@ -15,6 +15,11 @@
 # keys its work on shipment_ref + status (order.status), shipment_ref + price (order.price) or shipment_ref + waybill.
 name: biteship
 label: {id: Biteship}
+summary:
+  id: Kirim paket lewat banyak kurir seperti JNE, J&T dan SiCepat, cek ongkir dan lacak resi.
+  en: Ship through many couriers such as JNE, J&T and SiCepat, with rates and tracking.
+category: operations
+icon: truck-line
 version: 0.1.0
 vendor: Biteship
 docs: https://biteship.com/docs/api
