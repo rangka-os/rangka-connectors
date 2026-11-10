@@ -5,7 +5,8 @@
 map, and how retries and duplicates are handled. Connectors are deterministic: no LLM sits in the data path.
 
 > **Status: v0 (October 2026).** The format and its schema are done, with WhatsApp Business as the first connector.
-> The kernel does not run connectors yet: in v0, a flow's `call` step is recorded in the audit log only.
+> The kernel runs connectors (contract 0002): webhooks at `/hooks/<org>/<connector>/<trigger>`, polls on a schedule,
+> and a flow's `call` step as a queued job. Keys are set per org and never live in these files (contract 0017).
 
 Part of the Rangka family: [rangka-os](https://github.com/rangka-os/rangka-os) ·
 [rangka-apps](https://github.com/rangka-os/rangka-apps) · **rangka-connectors** ·
@@ -98,8 +99,9 @@ notifications, while connectors integrate the business with outside services. Th
 
 Create `<name>/connector.rk` with the schema line
 `# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.4/connector.json` and declare `auth` (fields marked
-`secret: true`), `triggers` (`via: webhook` or `poll`, verification, `emit` mapping) and `actions` (request,
-response mapping, `retry`). Validate it together with the apps:
+`secret: true`), `triggers` (`via: webhook` with verification, or `via: poll` naming the `action` to send, with
+`input`, `cursor` and optionally `each` for one call per outlet; `for_each` and `emit` mapping) and `actions`
+(request, response mapping, `retry`). Validate it together with the apps:
 
 ```bash
 python3 ../rangka-os/tools/rangka_validate.py ../rangka-apps/apps --site ../rangka-apps/sites/kopi-senja --connectors .
