@@ -1,0 +1,120 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/connector.json
+# DOKU (Indonesia), Non-SNAP API: DOKU Checkout makes a payment page for an invoice or a cashier sale, with QRIS (and
+# other channels DOKU enables on the account); DOKU sends an HTTP notification when it is paid.
+# Why Non-SNAP Checkout: one endpoint and one signature scheme for QRIS and payment links; SNAP QRIS (qr-mpm-generate)
+# needs a B2B token with RSA and is the next step when the cashier must show the QR itself. Research and sources:
+# rangka (Juragan) reports/keputusan-riset/doku-connector.md.
+# Signature (both ways): HMACSHA256= + base64(HMAC-SHA256(secret key, lines)), lines Client-Id, Request-Id,
+# Request-Timestamp, Request-Target (the path) and Digest (base64 SHA-256 of the body; no Digest line for a GET).
+# The kernel signs calls with auth.sign and checks notifications with verify.signature.lines (rangka-os contract 0002,
+# refinement of 11 Nov 2026). The notification URL registered in DOKU Back Office is the hook's full path
+# (https://<site>/hooks/<org>/doku/payment_notified); a proxy must not rewrite the path, it is signed.
+# Every notification emits gateway_ref (DOKU's original request id of the payment), external_id (our invoice number)
+# and paid (true only for transaction.status SUCCESS): a flow that records money starts with `if: event.paid` and
+# uses gateway_ref as idempotency key, as with xendit.
+# Test mode: api_host api-sandbox.doku.com with sandbox keys from DOKU; the sandbox simulator pays and notifies. Until a
+# sandbox account exists, doku/mock/doku_mock.py answers Checkout and sends signed notifications locally.
+name: doku
+label: {id: DOKU}
+summary:
+  id: Terima pembayaran QRIS dan link bayar lewat DOKU Checkout.
+  en: Take QRIS and payment-link payments through DOKU Checkout.
+category: payments
+icon: secure-payment-line
+version: 0.1.0
+vendor: DOKU
+docs: https://developers.doku.com/accept-payments/doku-checkout
+hosts: [api-sandbox.doku.com, api.doku.com]
+auth:
+  type: hmac
+  fields:
+    - name: client_id
+      label: {id: Client ID}
+      required: true
+      help: {id: 'DOKU Back Office > Integration > API Keys (diawali BRN-)'}
+    - name: secret_key
+      label: {id: Secret key}
+      secret: true
+      required: true
+      help: {id: 'DOKU Back Office > Integration > API Keys. Kunci sandbox untuk uji'}
+    - name: api_host
+      label: {id: Server DOKU}
+      required: true
+      help: {id: 'api-sandbox.doku.com untuk uji, api.doku.com untuk transaksi nyata'}
+  sign:
+    alg: hmac-sha256
+    key: secret_key
+    encoding: base64
+    header: Signature
+    prefix: HMACSHA256=
+    headers: {Client-Id: '{auth.client_id}', Request-Id: '{request.id}', Request-Timestamp: '{request.timestamp}'}
+    lines:
+      - 'Client-Id:{auth.client_id}'
+      - 'Request-Id:{request.id}'
+      - 'Request-Timestamp:{request.timestamp}'
+      - 'Request-Target:{request.target}'
+      - 'Digest:{request.digest}'
+triggers:
+  - name: payment_notified
+    label: {id: Pembayaran DOKU masuk}
+    via: webhook
+    verify:
+      signature:
+        header: Signature
+        prefix: HMACSHA256=
+        alg: hmac-sha256
+        key: secret_key
+        encoding: base64
+        lines:
+          - 'Client-Id:{auth.client_id}'
+          - 'Request-Id:{header.Request-Id}'
+          - 'Request-Timestamp:{header.Request-Timestamp}'
+          - 'Request-Target:{request.target}'
+          - 'Digest:{request.digest}'
+    emit:
+      gateway_ref: transaction.original_request_id
+      external_id: order.invoice_number
+      paid_amount: order.amount
+      paid_at: transaction.date
+      status: transaction.status
+      paid: transaction.status == 'SUCCESS'
+      # DOKU's channel (QRIS, VIRTUAL_ACCOUNT_BCA, ...) and service (QRIS, VIRTUAL_ACCOUNT, ...); flows map them to
+      # payment.method
+      channel: channel.id
+      service: service.id
+actions:
+  - name: create_checkout
+    label: {id: Buat halaman bayar DOKU}
+    request:
+      method: POST
+      url: https://{auth.api_host}/checkout/v1/payment
+      body:
+        order:
+          amount: '{input.amount}'
+          invoice_number: '{input.external_id}'
+          currency: IDR
+          callback_url: '{input.return_url}'
+        payment:
+          payment_due_date: '{input.due_minutes}'
+          payment_method_types: '{input.methods}'
+        customer:
+          name: '{input.customer_name}'
+          phone: '{input.customer_phone}'
+    input:
+      - {name: external_id, type: data, required: true, help: {id: 'Nomor faktur atau struk (maks 64 karakter); kembali sebagai external_id di notifikasi'}}
+      - {name: amount, type: currency, required: true, help: {id: Rupiah utuh}}
+      - {name: methods, type: json, default: "['QRIS']", help: {id: 'Saluran yang ditawarkan, misalnya QRIS'}}
+      - {name: due_minutes, type: int, default: '60'}
+      - {name: return_url, type: data}
+      - {name: customer_name, type: data}
+      - {name: customer_phone, type: data}
+    output:
+      payment_url: response.payment.url
+      token_id: response.payment.token_id
+      expires_at: response.payment.expired_date
+      external_id: response.order.invoice_number
+    retry: {max: 5, backoff: exponential, on: [429, 500, 502, 503]}
+    idempotency: input.external_id + ':' + string(input.amount)
+limits:
+  rate: per DOKU account
+  note: {id: 'Akun DOKU dan aktivasi QRIS lewat DOKU (KTP/NPWP). MDR QRIS mengikuti BI'}

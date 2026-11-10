@@ -1,0 +1,5 @@
+{"order": {"invoice_number": "INV/TC/26/0007", "amount": 750000},
+ "customer": {"name": "Pelanggan Contoh", "email": "pelanggan@contoh.test"},
+ "transaction": {"type": "SALE", "status": "SUCCESS", "date": "2026-11-11T05:12:40Z", "original_request_id": "3f2b8c1e-7d4a-4b9e-9c21-0a1b2c3d4e5f"},
+ "service": {"id": "QRIS"}, "acquirer": {"id": "QRIS"}, "channel": {"id": "QRIS"},
+ "additional_info": {"origin": {"product": "CHECKOUT"}}}
