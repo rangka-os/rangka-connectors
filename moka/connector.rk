@@ -5,6 +5,9 @@
 # below follow Moka's published API reference and must be confirmed once access is granted. Until then, rangka-apps
 # imports the Item Details export (modules/outlet_sales/imports/moka_item_details), whose headers were checked against
 # real exports.
+# fixtures/ are synthetic (no merchant data): two outlets of the demo F&B shop. The checkouts fields (sku, quantity,
+# total_price, discount_amount, refunded_quantity) follow the API reference as read before access; rangka-apps flow
+# moka_transaction_staged reads them, so a rename after access changes the flow and these fixtures together.
 name: moka
 label: {id: Moka POS}
 summary:
@@ -48,6 +51,7 @@ triggers:
     emit:
       transaction_id: item.id
       outlet_id: item.outlet_id
+      outlet_name: outlet.name
       receipt_no: item.payment_no
       created_at: item.created_at
       is_refunded: item.is_refunded

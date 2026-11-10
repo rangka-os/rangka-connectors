@@ -1,0 +1,6 @@
+{"outlet": {"id": 70002, "name": "Tahu Contoh - Braga"},
+ "item": {"id": 91000002, "payment_no": "BRG-000102", "outlet_id": 70002, "created_at": "2026-11-10T19:05:44+07:00",
+   "payment_type": "qris", "is_refunded": true, "total_collected": 15000,
+   "checkouts": [
+     {"item_id": 501, "item_name": "Tahu goreng original", "item_variant_name": "", "sku": "TH-ORI", "quantity": 1, "item_price": 15000, "total_price": 15000, "discount_amount": 0, "refunded_quantity": 1}
+   ]}}
