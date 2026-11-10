@@ -1,4 +1,4 @@
 {"data": {"items": [
-  {"id": 501, "name": "Tahu Crispy", "sku": "TCN-001", "price": 15000},
-  {"id": 502, "name": "Es Teh Manis", "sku": "TCN-010", "price": 12000}
+  {"id": 501, "name": "Tahu goreng original", "sku": "TH-ORI", "price": 15000},
+  {"id": 502, "name": "Tahu goreng pedas", "sku": "TH-PDS", "price": 18000}
 ]}}
