@@ -1,0 +1,27 @@
+{
+  "payment_notified.json": {
+    "gateway_ref": "3f2b8c1e-7d4a-4b9e-9c21-0a1b2c3d4e5f",
+    "external_id": "INV/TC/26/0007",
+    "paid_amount": 750000,
+    "status": "SUCCESS",
+    "paid": true,
+    "channel": "QRIS",
+    "service": "QRIS",
+    "type": "SALE"
+  },
+  "payment_notified_failed.json": {
+    "external_id": "INV/TC/26/0008",
+    "paid": false,
+    "channel": "VIRTUAL_ACCOUNT_BCA"
+  },
+  "create_checkout.json": {
+    "payment_url": "https://sandbox.doku.com/checkout-link-v2/tok-contoh-0007",
+    "token_id": "tok-contoh-0007",
+    "external_id": "INV/TC/26/0007"
+  },
+  "payment_notified_refund.json": {
+    "type": "REFUND",
+    "status": "SUCCESS",
+    "paid": false
+  }
+}
