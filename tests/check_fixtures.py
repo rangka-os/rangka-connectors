@@ -12,7 +12,7 @@ For a connector with a fixtures/ folder:
 - an emit that is an expression (==, ||, &&, string literals) is evaluated on the fixture;
 - fixtures/expect.json pins values per fixture ({"<file>": {"<emit>": value}});
 - every {input.x}, {auth.x} and settings.x the spec reads is declared.
-The kernel does not run connectors yet (contract 0002); this keeps a spec honest about the payloads it was written from.
+This keeps a spec honest about the payloads it was written from, before the kernel sends a real request.
 """
 import glob
 import json
