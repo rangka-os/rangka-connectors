@@ -2,9 +2,9 @@
 # Moka POS (GoTo): transactions, refunds, outlets and items through the Moka Connect API with OAuth 2.0
 # (authorization code; the owner approves Juragan in Moka Backoffice).
 # Status: spec. API access needs Moka's approval of the integration (developer application at Moka); the paths
-# below follow Moka's published API reference and must be confirmed once access is granted. The kernel does not run
-# connectors yet (contract 0002); until it does, rangka-apps imports the Item Details export
-# (modules/outlet_sales/imports/moka_item_details), whose headers were checked against real exports.
+# below follow Moka's published API reference and must be confirmed once access is granted. Until then, rangka-apps
+# imports the Item Details export (modules/outlet_sales/imports/moka_item_details), whose headers were checked against
+# real exports.
 name: moka
 label: {id: Moka POS}
 summary:
@@ -31,13 +31,20 @@ auth:
       label: {id: Refresh token}
       secret: true
 triggers:
-  # Moka has no webhook for sales: a scheduled flow polls get_latest_transactions per outlet every 15 minutes and
-  # keeps the last `since` it saw; the transaction id is the idempotency key.
+  # Moka has no webhook for sales: the kernel polls latest_transactions per outlet every 15 minutes (contract 0002
+  # §A.1, each:). list_outlets runs first; every outlet keeps its own cursor, the newest created_at it saw. The first
+  # poll starts from today. The transaction id is the idempotency key.
   - name: transaction_created
     label: {id: Transaksi baru}
     via: poll
     every: 15m
-    for_each: data.payments[]
+    action: latest_transactions
+    each: {action: list_outlets, items: outlets, as: outlet, key: outlet.id}
+    input:
+      outlet_id: outlet.id
+      since: "cursor != null ? cursor : today()"
+    cursor: "size(payments) > 0 ? max(payments.map(p, p.created_at)) : null"
+    for_each: payments[]
     emit:
       transaction_id: item.id
       outlet_id: item.outlet_id
