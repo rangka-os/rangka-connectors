@@ -1,0 +1,6 @@
+{"message": ["SUCCESS"],
+ "response": {
+   "order": {"amount": "750000", "invoice_number": "INV/TC/26/0007", "currency": "IDR", "session_id": "sess-contoh-0007"},
+   "payment": {"payment_method_types": ["QRIS"], "payment_due_date": 60, "token_id": "tok-contoh-0007",
+               "url": "https://sandbox.doku.com/checkout-link-v2/tok-contoh-0007", "expired_date": "20261111131240"},
+   "uuid": 1234567890, "headers": {"request_id": "11111111-2222-4333-8444-555555555555", "signature": "HMACSHA256=..."}}}

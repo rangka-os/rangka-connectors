@@ -1,0 +1,3 @@
+{"order": {"invoice_number": "INV/TC/26/0007", "amount": 750000},
+ "transaction": {"type": "REFUND", "status": "SUCCESS", "date": "2026-11-12T03:00:00Z", "original_request_id": "3f2b8c1e-7d4a-4b9e-9c21-0a1b2c3d4e5f"},
+ "service": {"id": "QRIS"}, "acquirer": {"id": "QRIS"}, "channel": {"id": "QRIS"}}
