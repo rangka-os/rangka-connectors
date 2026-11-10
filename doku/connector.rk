@@ -10,7 +10,8 @@
 # refinement of 11 Nov 2026). The notification URL registered in DOKU Back Office is the hook's full path
 # (https://<site>/hooks/<org>/doku/payment_notified); a proxy must not rewrite the path, it is signed.
 # Every notification emits gateway_ref (DOKU's original request id of the payment), external_id (our invoice number)
-# and paid (true only for transaction.status SUCCESS): a flow that records money starts with `if: event.paid` and
+# and paid (true only for transaction.status SUCCESS of a SALE, or of a notification without a type; a REFUND
+# notification is never paid): a flow that records money starts with `if: event.paid` and
 # uses gateway_ref as idempotency key, as with xendit.
 # Test mode: api_host api-sandbox.doku.com with sandbox keys from DOKU; the sandbox simulator pays and notifies. Until a
 # sandbox account exists, doku/mock/doku_mock.py answers Checkout and sends signed notifications locally.
@@ -77,7 +78,9 @@ triggers:
       paid_amount: order.amount
       paid_at: transaction.date
       status: transaction.status
-      paid: transaction.status == 'SUCCESS'
+      # DOKU's transaction type: SALE for a payment; a REFUND (or anything but a sale) of status SUCCESS is not money in
+      type: transaction.type
+      paid: transaction.status == 'SUCCESS' && (transaction.type == 'SALE' || transaction.type == '')
       # DOKU's channel (QRIS, VIRTUAL_ACCOUNT_BCA, ...) and service (QRIS, VIRTUAL_ACCOUNT, ...); flows map them to
       # payment.method
       channel: channel.id
@@ -108,13 +111,16 @@ actions:
       - {name: return_url, type: data}
       - {name: customer_name, type: data}
       - {name: customer_phone, type: data}
+      # a payment page expires (due_minutes): a new page for the same invoice and amount is a new attempt, so it is not
+      # taken for a repeat of the first call
+      - {name: attempt, type: int, default: '1', help: {id: 'Naikkan untuk membuat halaman bayar baru setelah yang lama kedaluwarsa'}}
     output:
       payment_url: response.payment.url
       token_id: response.payment.token_id
       expires_at: response.payment.expired_date
       external_id: response.order.invoice_number
     retry: {max: 5, backoff: exponential, on: [429, 500, 502, 503]}
-    idempotency: input.external_id + ':' + string(input.amount)
+    idempotency: input.external_id + ':' + string(input.amount) + ':' + string(input.attempt)
 limits:
   rate: per DOKU account
   note: {id: 'Akun DOKU dan aktivasi QRIS lewat DOKU (KTP/NPWP). MDR QRIS mengikuti BI'}
