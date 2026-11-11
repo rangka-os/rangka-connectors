@@ -6,7 +6,7 @@
 
 Dummy keys only. The mock signs any notification it is asked for (/simulate/*), without authentication: it is a
 signing oracle for its key. So it listens on 127.0.0.1 only, reads the key from DOKU_MOCK_SECRET_KEY (not argv, which
-`ps` shows), and refuses a key that does not say it is a dummy (it must contain "dummy" or "test"). Never give it a
+`ps` shows), and refuses a key that does not say it is a dummy (a part "dummy" or "test" between - _ or .). Never give it a
 key from DOKU Back Office, sandbox or production.
 
 Stdlib only. What it does, in DOKU's formats (rangka connector doku, research in Juragan's
@@ -32,6 +32,7 @@ import argparse
 import base64
 import html
 import os
+import re
 import hashlib
 import hmac
 import json
@@ -179,8 +180,7 @@ def handler(state: State):
 
 def dummy_key(secret: str) -> bool:
     """True for a key that says it is a dummy: the mock signs whatever it is asked, so a real key must never reach it."""
-    low = secret.lower()
-    return bool(secret) and ("dummy" in low or "test" in low)
+    return bool(re.search(r"(^|[-_.])(dummy|test)([-_.]|$)", secret, re.IGNORECASE))
 
 
 def main(argv=None):
@@ -192,7 +192,7 @@ def main(argv=None):
     a = ap.parse_args(argv)
     secret = os.environ.get("DOKU_MOCK_SECRET_KEY") or a.secret_key or ""
     if not dummy_key(secret):
-        ap.error("set DOKU_MOCK_SECRET_KEY to a dummy key (it must contain 'dummy' or 'test'); never a real DOKU key")
+        ap.error("set DOKU_MOCK_SECRET_KEY to a dummy key (a part dummy or test, e.g. SK-test-dummy-demo); never a real DOKU key")
     srv = ThreadingHTTPServer(("127.0.0.1", a.port), handler(State(a.client_id, secret, a.notify_url)))
     print(f"doku mock on http://127.0.0.1:{srv.server_address[1]} (notifications to {a.notify_url})", flush=True)
     try:

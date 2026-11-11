@@ -86,7 +86,7 @@ st, out = post("/simulate/notify", json.dumps({"invoice_number": "INV/TC/26/0008
 check("a FAILED notification is sent and verifies", st == 200 and got[-1][0] and got[-1][1]["transaction"]["status"] == "FAILED", (st, got[-1:]))
 
 # the mock signs anything it is asked: it takes dummy keys only, from the environment, and escapes what it echoes
-check("only dummy keys", m.dummy_key(SECRET) and m.dummy_key("SK-TEST-x") and not m.dummy_key("SK-backoffice-key")
+check("only dummy keys", m.dummy_key(SECRET) and m.dummy_key("SK-TEST-x") and not m.dummy_key("SK-backoffice-key") and not m.dummy_key("SK-attestation-key")
       and not m.dummy_key(""), SECRET)
 import subprocess  # noqa: E402
 env = {k: v for k, v in os.environ.items() if k != "DOKU_MOCK_SECRET_KEY"}
