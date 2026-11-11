@@ -46,11 +46,11 @@ triggers:
   #   what is emitted, kept 30 days); a refunded one emits a new event (payment_refunds, refunded_quantity), and flow
   #   moka_transaction_staged (rangka-apps) books only the quantity refunded since, per checkout uuid.
   # - A sale synced late from offline mode comes in with its sync time, inside the window.
-  # - LIMIT until the kernel follows next_url (rangka-os card): one call reads the newest 100 of the window only. More
-  #   than 100 transactions per outlet between two polls lose the oldest of them, and a refund of a transaction past
-  #   the newest 100 is not seen. With next_url followed the whole window is read and nothing in it is lost; a refund
-  #   made more than two days after the sale is outside the window either way (head office books it, or the export).
-  #   An outlet moves from the export file to the API only after that kernel card (Juragan PROGRESS, audit moka H3/M1).
+  # - Pages: next: next makes the kernel follow Moka's next_url (on api.mokapos.com only) until it is null (rangka-os
+  #   contract 0002, refinement 11 Nov 2026; at most 50 pages of 100 per outlet and poll), so the whole window is read
+  #   and nothing in it is lost. A refund made more than two days after the sale is outside the window (head office
+  #   books it, or the export). An outlet moves from the export file to the API on the day head office sets its
+  #   moka_api_from (rangka-apps outlet; until then its API transactions are kept without lines).
   # To confirm once Moka grants API access: synchronized_at for offline sales, the largest per_page, the offset of
   # created_at (flows take the day from its first 10 characters, a Z time as WIB).
   - name: transaction_created
@@ -64,6 +64,7 @@ triggers:
       since: "(days_between('1970-01-01', today()) - 2) * 86400"
       time_filter: "'synchronized_at'"
       reorder_type: "'DESC'"
+    next: next
     for_each: payments[]
     emit:
       transaction_id: item.id
