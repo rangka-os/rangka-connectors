@@ -36,21 +36,23 @@ auth:
 triggers:
   # Moka has no webhook for sales: the kernel polls get_latest_transactions per outlet every 5 minutes (contract 0002
   # §A.1, each:). list_outlets runs first. Moka's public API spec (api.mokapos.com/docs, swagger "MOKA API" 0.2,
-  # 6 Mar 2026) answers newest first unless reorder_type is ASC, takes since/until as epoch seconds, has no page
-  # parameter (only a next_url the kernel does not follow) and filters on created_at, updated_at or synchronized_at.
-  # So this trigger asks for every transaction CHANGED (time_filter updated_at) since the start of the day before
-  # yesterday (UTC, two days back, which also covers WIT/WITA/WIB), newest change first, 100 at a time, with no cursor:
-  # - a new sale, a sale synced late from Moka's offline mode, and a refund made hours or days after the sale all
-  #   change updated_at, so each comes in on the next poll;
-  # - a transaction that did not change since the last poll emits the same event, which the kernel drops (the event
-  #   key is the hash of what is emitted, kept 30 days); a changed one (a refund) is a new event, and flow
-  #   moka_transaction_staged (rangka-apps) books only what is new (refund lines for the newly refunded quantity);
-  # - the limit: more than 100 changes in one outlet between two polls (5 minutes) lose the oldest of them from the
-  #   API; the export file of that day is the fallback. The kernel following next_url, or Moka taking a page number,
-  #   lifts the limit (rangka-os card).
-  # To confirm once Moka grants API access: that a refund and a late offline sync move updated_at, the largest
-  # per_page Moka allows, and created_at's offset (the spec's example ends in Z; flows take the day from its first 10
-  # characters).
+  # 6 Mar 2026): since/until are epoch seconds, results come newest first unless reorder_type is ASC, there is no page
+  # parameter (the answer's next_url is the next page), time_filter picks created_at, updated_at or synchronized_at.
+  # In its example a refund made after the sale shows in payment_refunds and in the checkout's refunded_quantity while
+  # updated_at stays the sale's time; synchronized_at is when Moka's server got the transaction (late for offline mode).
+  # So every poll reads the whole window again: the transactions Moka's server received (synchronized_at) since two
+  # days back, newest first, with no cursor.
+  # - A transaction that did not change emits the same event, which the kernel drops (the event key is the hash of
+  #   what is emitted, kept 30 days); a refunded one emits a new event (payment_refunds, refunded_quantity), and flow
+  #   moka_transaction_staged (rangka-apps) books only the quantity refunded since, per checkout uuid.
+  # - A sale synced late from offline mode comes in with its sync time, inside the window.
+  # - LIMIT until the kernel follows next_url (rangka-os card): one call reads the newest 100 of the window only. More
+  #   than 100 transactions per outlet between two polls lose the oldest of them, and a refund of a transaction past
+  #   the newest 100 is not seen. With next_url followed the whole window is read and nothing in it is lost; a refund
+  #   made more than two days after the sale is outside the window either way (head office books it, or the export).
+  #   An outlet moves from the export file to the API only after that kernel card (Juragan PROGRESS, audit moka H3/M1).
+  # To confirm once Moka grants API access: synchronized_at for offline sales, the largest per_page, the offset of
+  # created_at (flows take the day from its first 10 characters, a Z time as WIB).
   - name: transaction_created
     label: {id: Transaksi baru atau berubah}
     via: poll
@@ -60,7 +62,7 @@ triggers:
     input:
       outlet_id: outlet.id
       since: "(days_between('1970-01-01', today()) - 2) * 86400"
-      time_filter: "'updated_at'"
+      time_filter: "'synchronized_at'"
       reorder_type: "'DESC'"
     for_each: payments[]
     emit:
@@ -69,9 +71,12 @@ triggers:
       outlet_name: outlet.name
       receipt_no: item.payment_no
       created_at: item.created_at
-      updated_at: item.updated_at
+      synchronized_at: item.synchronized_at
       is_refunded: item.is_refunded
       refunded_date: item.refunded_date
+      # Moka's refunds of this sale (each with its own created_at and refund_amount); the checkouts carry
+      # refunded_quantity and a uuid per line
+      payment_refunds: item.payment_refunds
       checkouts: item.checkouts
       payment_type: item.payment_type
       total_collected: item.total_collected
@@ -86,7 +91,7 @@ actions:
     input:
       - {name: outlet_id, type: data, required: true}
       - {name: since, type: int, required: true, help: {id: 'Detik epoch (UTC)'}}
-      - {name: time_filter, type: data, default: "'updated_at'", help: {id: 'created_at, updated_at atau synchronized_at'}}
+      - {name: time_filter, type: data, default: "'synchronized_at'", help: {id: 'created_at, updated_at atau synchronized_at'}}
       - {name: reorder_type, type: data, default: "'DESC'", help: {id: 'DESC (terbaru dulu) atau ASC'}}
     output: {payments: data.payments, next: data.next_url}
     retry: {max: 5, backoff: exponential, on: [429, 500, 502, 503]}
