@@ -1,6 +1,44 @@
 {
-  "transaction_created.json": {"transaction_id": 91000001, "outlet_id": 70002, "outlet_name": "Tahu Contoh - Braga", "receipt_no": "BRG-000101", "created_at": "2026-11-10T11:42:10+07:00", "is_refunded": false, "total_collected": 63000},
-  "transaction_created_refund.json": {"transaction_id": 91000002, "is_refunded": true, "payment_type": "qris"},
-  "list_outlets.json": {"outlets": [{"id": 70001, "name": "Tahu Contoh - Dago", "address": "Jl. Contoh Dago No. 1", "city": "Bandung"}, {"id": 70002, "name": "Tahu Contoh - Braga", "address": "Jl. Contoh Braga No. 2", "city": "Bandung"}]},
-  "latest_transactions.json": {"next": true}
+  "transaction_created.json": {
+    "transaction_id": 91000001,
+    "outlet_id": 70002,
+    "outlet_name": "Tahu Contoh - Braga",
+    "receipt_no": "BRG-000101",
+    "created_at": "2026-11-10T11:42:10+07:00",
+    "is_refunded": false,
+    "total_collected": 63000,
+    "updated_at": "2026-11-10T11:42:10+07:00",
+    "refunded_date": null
+  },
+  "transaction_created_refund.json": {
+    "transaction_id": 91000002,
+    "is_refunded": true,
+    "payment_type": "qris"
+  },
+  "list_outlets.json": {
+    "outlets": [
+      {
+        "id": 70001,
+        "name": "Tahu Contoh - Dago",
+        "address": "Jl. Contoh Dago No. 1",
+        "city": "Bandung"
+      },
+      {
+        "id": 70002,
+        "name": "Tahu Contoh - Braga",
+        "address": "Jl. Contoh Braga No. 2",
+        "city": "Bandung"
+      }
+    ]
+  },
+  "latest_transactions.json": {
+    "next": null
+  },
+  "transaction_created_refund_later.json": {
+    "transaction_id": 91000001,
+    "is_refunded": true,
+    "updated_at": "2026-11-11T09:15:30+07:00",
+    "refunded_date": "2026-11-11T09:15:30+07:00",
+    "created_at": "2026-11-10T11:42:10+07:00"
+  }
 }
