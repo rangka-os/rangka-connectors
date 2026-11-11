@@ -10,8 +10,8 @@
 # refinement of 11 Nov 2026). The notification URL registered in DOKU Back Office is the hook's full path
 # (https://<site>/hooks/<org>/doku/payment_notified); a proxy must not rewrite the path, it is signed.
 # Every notification emits gateway_ref (DOKU's original request id of the payment), external_id (our invoice number)
-# and paid (true only for transaction.status SUCCESS of a SALE, or of a notification without a type or with an empty
-# one, which DOKU's examples never send but a channel might; a REFUND notification is never paid): a flow that records money starts with `if: event.paid` and
+# and paid (true only for transaction.status SUCCESS of a SALE, or of a notification without a type, with a null or
+# an empty one, which DOKU's examples never send but a channel might; a REFUND notification is never paid): a flow that records money starts with `if: event.paid` and
 # uses gateway_ref as idempotency key, as with xendit.
 # Test mode: api_host api-sandbox.doku.com with sandbox keys from DOKU; the sandbox simulator pays and notifies. Until a
 # sandbox account exists, doku/mock/doku_mock.py answers Checkout and sends signed notifications locally.
@@ -82,7 +82,7 @@ triggers:
       type: transaction.type
       # a notification without transaction.type counts as a sale (paid true), never as null: a null paid would be
       # skipped by the flows without telling anyone
-      paid: "transaction.status == 'SUCCESS' && (!('type' in transaction) || transaction.type == 'SALE' || transaction.type == '')"
+      paid: "transaction.status == 'SUCCESS' && (!('type' in transaction) || transaction.type == null || transaction.type == 'SALE' || transaction.type == '')"
       # DOKU's channel (QRIS, VIRTUAL_ACCOUNT_BCA, ...) and service (QRIS, VIRTUAL_ACCOUNT, ...); flows map them to
       # payment.method
       channel: channel.id

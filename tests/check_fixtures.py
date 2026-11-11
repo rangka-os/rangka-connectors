@@ -37,7 +37,7 @@ def resolve(doc, path):
 
 
 def evaluate(expr, doc):
-    """A small CEL subset: paths, 'strings', true/false, ==, !=, !, ||, &&, 'key' in path, parentheses.
+    """A small CEL subset: paths, 'strings', true/false/null, ==, !=, !, ||, &&, 'key' in path, parentheses.
 
     A path that is not in the fixture fails only if it is evaluated (|| and && short-circuit, as in CEL)."""
     tokens = re.findall(r"'[^']*'|==|!=|!|\|\||&&|\(|\)|[a-z_][a-z0-9_.]*", expr)
@@ -59,6 +59,8 @@ def evaluate(expr, doc):
             out.append(" and ")
         elif t in ("true", "false"):
             out.append(t.capitalize())
+        elif t == "null":
+            out.append("None")
         else:
             v = resolve(doc, t)
             out.append(f"_missing({t!r})" if v is MISSING else repr(v))

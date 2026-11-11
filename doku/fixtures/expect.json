@@ -29,5 +29,10 @@
     "status": "SUCCESS",
     "type": null,
     "paid": true
+  },
+  "payment_notified_null_type.json": {
+    "external_id": "INV/TC/26/0010",
+    "type": null,
+    "paid": true
   }
 }
