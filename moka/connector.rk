@@ -34,19 +34,36 @@ auth:
       label: {id: Refresh token}
       secret: true
 triggers:
-  # Moka has no webhook for sales: the kernel polls latest_transactions per outlet every 15 minutes (contract 0002
-  # §A.1, each:). list_outlets runs first; every outlet keeps its own cursor, the newest created_at it saw. The first
-  # poll starts from today. The transaction id is the idempotency key.
+  # Moka has no webhook for sales: the kernel polls get_latest_transactions per outlet every 5 minutes (contract 0002
+  # §A.1, each:). list_outlets runs first. Moka's public API spec (api.mokapos.com/docs, swagger "MOKA API" 0.2,
+  # 6 Mar 2026): since/until are epoch seconds, results come newest first unless reorder_type is ASC, there is no page
+  # parameter (the answer's next_url is the next page), time_filter picks created_at, updated_at or synchronized_at.
+  # In its example a refund made after the sale shows in payment_refunds and in the checkout's refunded_quantity while
+  # updated_at stays the sale's time; synchronized_at is when Moka's server got the transaction (late for offline mode).
+  # So every poll reads the whole window again: the transactions Moka's server received (synchronized_at) since two
+  # days back, newest first, with no cursor.
+  # - A transaction that did not change emits the same event, which the kernel drops (the event key is the hash of
+  #   what is emitted, kept 30 days); a refunded one emits a new event (payment_refunds, refunded_quantity), and flow
+  #   moka_transaction_staged (rangka-apps) books only the quantity refunded since, per checkout uuid.
+  # - A sale synced late from offline mode comes in with its sync time, inside the window.
+  # - LIMIT until the kernel follows next_url (rangka-os card): one call reads the newest 100 of the window only. More
+  #   than 100 transactions per outlet between two polls lose the oldest of them, and a refund of a transaction past
+  #   the newest 100 is not seen. With next_url followed the whole window is read and nothing in it is lost; a refund
+  #   made more than two days after the sale is outside the window either way (head office books it, or the export).
+  #   An outlet moves from the export file to the API only after that kernel card (Juragan PROGRESS, audit moka H3/M1).
+  # To confirm once Moka grants API access: synchronized_at for offline sales, the largest per_page, the offset of
+  # created_at (flows take the day from its first 10 characters, a Z time as WIB).
   - name: transaction_created
-    label: {id: Transaksi baru}
+    label: {id: Transaksi baru atau berubah}
     via: poll
-    every: 15m
+    every: 5m
     action: latest_transactions
     each: {action: list_outlets, items: outlets, as: outlet, key: outlet.id}
     input:
       outlet_id: outlet.id
-      since: "cursor != null ? cursor : today()"
-    cursor: "size(payments) > 0 ? max(payments.map(p, p.created_at)) : null"
+      since: "(days_between('1970-01-01', today()) - 2) * 86400"
+      time_filter: "'synchronized_at'"
+      reorder_type: "'DESC'"
     for_each: payments[]
     emit:
       transaction_id: item.id
@@ -54,7 +71,12 @@ triggers:
       outlet_name: outlet.name
       receipt_no: item.payment_no
       created_at: item.created_at
+      synchronized_at: item.synchronized_at
       is_refunded: item.is_refunded
+      refunded_date: item.refunded_date
+      # Moka's refunds of this sale (each with its own created_at and refund_amount); the checkouts carry
+      # refunded_quantity and a uuid per line
+      payment_refunds: item.payment_refunds
       checkouts: item.checkouts
       payment_type: item.payment_type
       total_collected: item.total_collected
@@ -65,12 +87,13 @@ actions:
       method: GET
       url: https://api.mokapos.com/v3/outlets/{input.outlet_id}/reports/get_latest_transactions
       headers: {Authorization: 'Bearer {auth.access_token}'}
-      query: {since: '{input.since}', per_page: '100', page: '{input.page}'}
+      query: {since: '{input.since}', time_filter: '{input.time_filter}', reorder_type: '{input.reorder_type}', per_page: '100'}
     input:
       - {name: outlet_id, type: data, required: true}
-      - {name: since, type: datetime, required: true}
-      - {name: page, type: int}
-    output: {payments: data.payments, next: data.completed}
+      - {name: since, type: int, required: true, help: {id: 'Detik epoch (UTC)'}}
+      - {name: time_filter, type: data, default: "'synchronized_at'", help: {id: 'created_at, updated_at atau synchronized_at'}}
+      - {name: reorder_type, type: data, default: "'DESC'", help: {id: 'DESC (terbaru dulu) atau ASC'}}
+    output: {payments: data.payments, next: data.next_url}
     retry: {max: 5, backoff: exponential, on: [429, 500, 502, 503]}
   - name: list_outlets
     label: {id: Daftar outlet}
