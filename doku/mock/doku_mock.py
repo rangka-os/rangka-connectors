@@ -1,8 +1,13 @@
 #!/usr/bin/env python3
 """A local stand-in for the DOKU Non-SNAP Checkout API, for demos and tests without a DOKU account.
 
-    python3 doku/mock/doku_mock.py --port 8901 --client-id BRN-0001-CONTOH --secret-key <key> \
+    DOKU_MOCK_SECRET_KEY=SK-test-dummy-demo python3 doku/mock/doku_mock.py --port 8901 --client-id BRN-0001-CONTOH \
         --notify-url http://127.0.0.1:8080/hooks/<org>/doku/payment_notified
+
+Dummy keys only. The mock signs any notification it is asked for (/simulate/*), without authentication: it is a
+signing oracle for its key. So it listens on 127.0.0.1 only, reads the key from DOKU_MOCK_SECRET_KEY (not argv, which
+`ps` shows), and refuses a key that does not say it is a dummy (a part "dummy" or "test" between - _ or .). Never give it a
+key from DOKU Back Office, sandbox or production.
 
 Stdlib only. What it does, in DOKU's formats (rangka connector doku, research in Juragan's
 reports/keputusan-riset/doku-connector.md):
@@ -25,6 +30,9 @@ from __future__ import annotations
 
 import argparse
 import base64
+import html
+import os
+import re
 import hashlib
 import hmac
 import json
@@ -56,6 +64,8 @@ def now_utc() -> str:
 
 
 class State:
+    """The mock's memory. secret is a dummy key: whoever reaches the mock can have anything signed with it."""
+
     def __init__(self, client_id, secret, notify_url):
         self.client_id, self.secret, self.notify_url = client_id, secret, notify_url
         self.payments = {}   # token -> {invoice_number, amount, request_id, status}
@@ -113,8 +123,8 @@ def handler(state: State):
                 if not p:
                     return self.send(404, {"error": {"code": "not_found"}})
                 return self.send(200, f"<!doctype html><meta charset=utf-8><title>DOKU (mock)</title>"
-                                      f"<h1>Bayar {p['invoice_number']}</h1><p>QRIS Rp {p['amount']:,}</p>"
-                                      f"<form method=post action=/simulate/pay/{tok}><button>Simulasi bayar</button></form>",
+                                      f"<h1>Bayar {html.escape(str(p['invoice_number']))}</h1><p>QRIS Rp {p['amount']:,}</p>"
+                                      f"<form method=post action=/simulate/pay/{urllib.parse.quote(tok)}><button>Simulasi bayar</button></form>",
                                  "text/html; charset=utf-8")
             self.send(404, {"error": {"code": "not_found"}})
 
@@ -168,14 +178,22 @@ def handler(state: State):
     return H
 
 
+def dummy_key(secret: str) -> bool:
+    """True for a key that says it is a dummy: the mock signs whatever it is asked, so a real key must never reach it."""
+    return bool(re.search(r"(^|[-_.])(dummy|test)([-_.]|$)", secret, re.IGNORECASE))
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--port", type=int, default=8901)
     ap.add_argument("--client-id", required=True)
-    ap.add_argument("--secret-key", required=True)
+    ap.add_argument("--secret-key", help="deprecated (visible in ps): set DOKU_MOCK_SECRET_KEY instead")
     ap.add_argument("--notify-url", required=True, help="the kernel hook: http://<kernel>/hooks/<org>/doku/payment_notified")
     a = ap.parse_args(argv)
-    srv = ThreadingHTTPServer(("127.0.0.1", a.port), handler(State(a.client_id, a.secret_key, a.notify_url)))
+    secret = os.environ.get("DOKU_MOCK_SECRET_KEY") or a.secret_key or ""
+    if not dummy_key(secret):
+        ap.error("set DOKU_MOCK_SECRET_KEY to a dummy key (a part dummy or test, e.g. SK-test-dummy-demo); never a real DOKU key")
+    srv = ThreadingHTTPServer(("127.0.0.1", a.port), handler(State(a.client_id, secret, a.notify_url)))
     print(f"doku mock on http://127.0.0.1:{srv.server_address[1]} (notifications to {a.notify_url})", flush=True)
     try:
         srv.serve_forever()

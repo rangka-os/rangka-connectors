@@ -1,13 +1,79 @@
-{"data": {"completed": true, "payments": [
-  {"id": 91000001, "payment_no": "BRG-000101", "outlet_id": 70002, "created_at": "2026-11-10T11:42:10+07:00",
-   "payment_type": "cash", "is_refunded": false, "total_collected": 63000,
-   "checkouts": [
-     {"item_id": 501, "item_name": "Tahu goreng original", "item_variant_name": "", "sku": "TH-ORI", "quantity": 2, "item_price": 15000, "total_price": 30000, "discount_amount": 0, "refunded_quantity": 0},
-     {"item_id": 502, "item_name": "Tahu goreng pedas", "item_variant_name": "", "sku": "TH-PDS", "quantity": 2, "item_price": 18000, "total_price": 36000, "discount_amount": 3000, "refunded_quantity": 0}
-   ]},
-  {"id": 91000002, "payment_no": "BRG-000102", "outlet_id": 70002, "created_at": "2026-11-10T19:05:44+07:00",
-   "payment_type": "qris", "is_refunded": true, "total_collected": 15000,
-   "checkouts": [
-     {"item_id": 501, "item_name": "Tahu goreng original", "item_variant_name": "", "sku": "TH-ORI", "quantity": 1, "item_price": 15000, "total_price": 15000, "discount_amount": 0, "refunded_quantity": 1}
-   ]}
-]}}
+{
+ "data": {
+  "completed": true,
+  "next_url": null,
+  "payments": [
+   {
+    "id": "4a3f6c1e-0b6d-4c1a-9a2e-91000002bbbb",
+    "payment_no": "BRG-000102",
+    "outlet_id": 70002,
+    "created_at": "2026-11-10T19:05:44+07:00",
+    "payment_type": "qris",
+    "is_refunded": true,
+    "refunded_date": "2026-11-10T19:07:02+07:00",
+    "total_collected": 15000,
+    "checkouts": [
+     {
+      "item_id": 501,
+      "item_name": "Tahu goreng original",
+      "item_variant_name": "",
+      "sku": "TH-ORI",
+      "quantity": 1,
+      "item_price": 15000,
+      "total_price": 15000,
+      "discount_amount": 0,
+      "refunded_quantity": 1,
+      "uuid": "c0ffee00-0000-4000-8000-000066000003"
+     }
+    ],
+    "synchronized_at": "2026-11-10T19:07:02+07:00",
+    "payment_refunds": [
+     {
+      "uuid": "a3f0e000-0000-4000-8000-000000000002",
+      "created_at": "2026-11-10T19:07:02+07:00",
+      "refund_amount": 15000,
+      "refund_type": "full"
+     }
+    ]
+   },
+   {
+    "id": "4a3f6c1e-0b6d-4c1a-9a2e-91000001aaaa",
+    "payment_no": "BRG-000101",
+    "outlet_id": 70002,
+    "created_at": "2026-11-10T11:42:10+07:00",
+    "payment_type": "cash",
+    "is_refunded": false,
+    "refunded_date": null,
+    "total_collected": 63000,
+    "checkouts": [
+     {
+      "item_id": 501,
+      "item_name": "Tahu goreng original",
+      "item_variant_name": "",
+      "sku": "TH-ORI",
+      "quantity": 2,
+      "item_price": 15000,
+      "total_price": 30000,
+      "discount_amount": 0,
+      "refunded_quantity": 0,
+      "uuid": "c0ffee00-0000-4000-8000-000066000001"
+     },
+     {
+      "item_id": 502,
+      "item_name": "Tahu goreng pedas",
+      "item_variant_name": "",
+      "sku": "TH-PDS",
+      "quantity": 2,
+      "item_price": 18000,
+      "total_price": 36000,
+      "discount_amount": 3000,
+      "refunded_quantity": 0,
+      "uuid": "c0ffee00-0000-4000-8000-000066000002"
+     }
+    ],
+    "synchronized_at": "2026-11-10T11:42:10+07:00",
+    "payment_refunds": []
+   }
+  ]
+ }
+}

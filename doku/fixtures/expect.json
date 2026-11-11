@@ -23,5 +23,16 @@
     "type": "REFUND",
     "status": "SUCCESS",
     "paid": false
+  },
+  "payment_notified_no_type.json": {
+    "external_id": "INV/TC/26/0009",
+    "status": "SUCCESS",
+    "type": null,
+    "paid": true
+  },
+  "payment_notified_null_type.json": {
+    "external_id": "INV/TC/26/0010",
+    "type": null,
+    "paid": true
   }
 }
