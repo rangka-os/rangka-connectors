@@ -1,0 +1,3 @@
+{"order": {"invoice_number": "INV/TC/26/0009", "amount": 250000},
+ "transaction": {"status": "SUCCESS", "date": "2026-11-12T04:10:00Z", "original_request_id": "8d0c1b2a-3e4f-4a5b-8c6d-7e8f9a0b1c2d"},
+ "service": {"id": "QRIS"}, "acquirer": {"id": "QRIS"}, "channel": {"id": "QRIS"}}

@@ -85,5 +85,21 @@ check("notification carries the invoice, amount, SUCCESS and the Checkout reques
 st, out = post("/simulate/notify", json.dumps({"invoice_number": "INV/TC/26/0008", "amount": 120000, "status": "FAILED"}).encode())
 check("a FAILED notification is sent and verifies", st == 200 and got[-1][0] and got[-1][1]["transaction"]["status"] == "FAILED", (st, got[-1:]))
 
+# the mock signs anything it is asked: it takes dummy keys only, from the environment, and escapes what it echoes
+check("only dummy keys", m.dummy_key(SECRET) and m.dummy_key("SK-TEST-x") and not m.dummy_key("SK-backoffice-key")
+      and not m.dummy_key(""), SECRET)
+import subprocess  # noqa: E402
+env = {k: v for k, v in os.environ.items() if k != "DOKU_MOCK_SECRET_KEY"}
+r = subprocess.run([sys.executable, m.__file__, "--port", "0", "--client-id", CLIENT, "--secret-key", "SK-backoffice-key",
+                    "--notify-url", notify_url], capture_output=True, text=True, env=env, timeout=10)
+check("the mock refuses to start with a key that is not a dummy", r.returncode == 2 and "dummy" in r.stderr, (r.returncode, r.stderr[-200:]))
+evil = json.dumps({"order": {"amount": 1000, "invoice_number": "<script>x</script>"}, "payment": {"payment_due_date": 30}}).encode()
+rid2 = str(uuid.uuid4())
+st, out = post("/checkout/v1/payment", evil, {"Client-Id": CLIENT, "Request-Id": rid2, "Request-Timestamp": ts,
+                                              "Signature": m.sign_lines(SECRET, CLIENT, rid2, ts, "/checkout/v1/payment", evil)})
+tok = (out or {}).get("response", {}).get("payment", {}).get("token_id", "")
+page = urllib.request.urlopen(base + "/checkout-link-v2/" + tok, timeout=10).read().decode() if st == 200 else ""
+check("the payment page escapes the invoice number", "<script>" not in page and "&lt;script&gt;" in page, page[:200])
+
 print(f"doku mock: {len(fails)} failed")
 sys.exit(1 if fails else 0)

@@ -10,7 +10,7 @@ For a connector with a fixtures/ folder:
   (<action>.json, the answer of the API);
 - every emit / output that is a field path resolves in each of its fixtures (null is allowed: the field is there);
 - an emit that is an expression (==, ||, &&, string literals) is evaluated on the fixture;
-- fixtures/expect.json pins values per fixture ({"<file>": {"<emit>": value}});
+- fixtures/expect.json pins values per fixture ({"<file>": {"<emit>": value}}); a field pinned to null may be absent;
 - every {input.x}, {auth.x} and settings.x the spec reads is declared.
 This keeps a spec honest about the payloads it was written from, before the kernel sends a real request.
 """
@@ -37,8 +37,10 @@ def resolve(doc, path):
 
 
 def evaluate(expr, doc):
-    """A small CEL subset: paths, 'strings', true/false, ==, !=, ||, &&, parentheses."""
-    tokens = re.findall(r"'[^']*'|==|!=|\|\||&&|\(|\)|[a-z_][a-z0-9_.]*", expr)
+    """A small CEL subset: paths, 'strings', true/false, ==, !=, !, ||, &&, 'key' in path, parentheses.
+
+    A path that is not in the fixture fails only if it is evaluated (|| and && short-circuit, as in CEL)."""
+    tokens = re.findall(r"'[^']*'|==|!=|!|\|\||&&|\(|\)|[a-z_][a-z0-9_.]*", expr)
     if "".join(tokens).replace(" ", "") != expr.replace(" ", ""):
         raise ValueError(f"outside the checked subset: {expr}")
     out = []
@@ -47,6 +49,10 @@ def evaluate(expr, doc):
             out.append(repr(t[1:-1]))
         elif t in ("==", "!=", "(", ")"):
             out.append(t)
+        elif t == "!":
+            out.append(" not ")
+        elif t == "in":
+            out.append(" in ")
         elif t == "||":
             out.append(" or ")
         elif t == "&&":
@@ -55,10 +61,11 @@ def evaluate(expr, doc):
             out.append(t.capitalize())
         else:
             v = resolve(doc, t)
-            if v is MISSING:
-                raise KeyError(t)
-            out.append(repr(v))
-    return eval(" ".join(out), {"__builtins__": {}})  # noqa: S307 - only the literals built above
+            out.append(f"_missing({t!r})" if v is MISSING else repr(v))
+
+    def _missing(path):
+        raise KeyError(path)
+    return eval(" ".join(out), {"__builtins__": {}, "_missing": _missing})  # noqa: S307 - only the literals built above
 
 
 def check(name):
@@ -86,7 +93,11 @@ def check(name):
                     errs.append(f"{base}: {key} = {val}: {e}")
                     continue
                 if got[key] is MISSING:
-                    errs.append(f"{base}: {key} = {val}: no such field")
+                    # a field a payload may leave out is pinned to null in expect.json (the kernel emits null)
+                    if key in expect.get(base, {}) and expect[base][key] is None:
+                        got[key] = None
+                    else:
+                        errs.append(f"{base}: {key} = {val}: no such field")
             for key, want in expect.get(base, {}).items():
                 n += 1
                 if key not in got:
