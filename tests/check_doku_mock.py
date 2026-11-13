@@ -85,6 +85,16 @@ check("notification carries the invoice, amount, SUCCESS and the Checkout reques
 st, out = post("/simulate/notify", json.dumps({"invoice_number": "INV/TC/26/0008", "amount": 120000, "status": "FAILED"}).encode())
 check("a FAILED notification is sent and verifies", st == 200 and got[-1][0] and got[-1][1]["transaction"]["status"] == "FAILED", (st, got[-1:]))
 
+st, out = post(f"/simulate/refund/{pay.get('token_id')}?amount=250000", b"")
+r = got[-1][1] if got else {}
+check("a refund of the paid Checkout: signed notification, type REFUND, status SUCCESS, same request id, the refunded amount",
+      st == 200 and out["notified"] == 200 and got[-1][0] and r["transaction"]["type"] == "REFUND" and r["transaction"]["status"] == "SUCCESS"
+      and r["transaction"]["original_request_id"] == rid and r["order"]["amount"] == 250000, (st, out, r))
+st, out = post("/simulate/refund/tok-unknown", b"")
+check("refund of an unknown or unpaid Checkout: 404", st == 404, (st, out))
+st, out = post("/simulate/notify", json.dumps({"invoice_number": "INV/TC/26/0008", "amount": 120000, "type": "REFUND"}).encode())
+check("/simulate/notify with type REFUND", st == 200 and got[-1][1]["transaction"]["type"] == "REFUND", got[-1:])
+
 # the mock signs anything it is asked: it takes dummy keys only, from the environment, and escapes what it echoes
 check("only dummy keys", m.dummy_key(SECRET) and m.dummy_key("SK-TEST-x") and not m.dummy_key("SK-backoffice-key") and not m.dummy_key("SK-attestation-key")
       and not m.dummy_key(""), SECRET)

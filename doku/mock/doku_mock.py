@@ -18,8 +18,10 @@ reports/keputusan-riset/doku-connector.md):
 - GET  /checkout-link-v2/<token>  a small page standing in for DOKU's payment page (QRIS text and a pay button).
 - POST /simulate/pay/<token>[?status=FAILED]  marks the payment and sends the signed HTTP notification to
   --notify-url, the way DOKU's sandbox simulator does; answers with the notification's status code.
-- POST /simulate/notify  body {"invoice_number", "amount", "status"}: a notification for an invoice without Checkout
-  (a static QRIS paid at the counter).
+- POST /simulate/refund/<token>[?amount=N]  a paid payment refunded (all, or N): a notification of transaction.type
+  REFUND, status SUCCESS, same original_request_id, as DOKU sends after a refund from Back Office. Not money in.
+- POST /simulate/notify  body {"invoice_number", "amount", "status", "type"}: a notification for an invoice without
+  Checkout (a static QRIS paid at the counter); type SALE by default, REFUND for a refund.
 - GET  /calls  every request it received (for tests).
 
 The kernel only sends signed requests over https to api-sandbox.doku.com or api.doku.com (rangka-os contract 0017
@@ -73,11 +75,11 @@ class State:
         self.lock = threading.Lock()
 
 
-def notify(state: State, invoice: str, amount: int, status: str, original_request_id: str, channel="QRIS") -> int:
+def notify(state: State, invoice: str, amount: int, status: str, original_request_id: str, channel="QRIS", type_="SALE") -> int:
     """Send one signed notification to the notify URL, as DOKU does; returns the HTTP status (0 when unreachable)."""
     body = json.dumps({
         "order": {"invoice_number": invoice, "amount": amount},
-        "transaction": {"type": "SALE", "status": status, "date": now_utc(), "original_request_id": original_request_id},
+        "transaction": {"type": type_, "status": status, "date": now_utc(), "original_request_id": original_request_id},
         "service": {"id": "QRIS" if channel == "QRIS" else "VIRTUAL_ACCOUNT"}, "acquirer": {"id": "QRIS"},
         "channel": {"id": channel}, "additional_info": {"origin": {"product": "CHECKOUT", "source": "doku-mock"}},
     }, separators=(",", ":")).encode()
@@ -166,11 +168,20 @@ def handler(state: State):
                 p["status"] = status
                 code = notify(state, p["invoice_number"], p["amount"], status, p["request_id"])
                 return self.send(200, {"notified": code, "status": status})
+            if u.path.startswith("/simulate/refund/"):
+                tok = u.path.rsplit("/", 1)[-1]
+                p = state.payments.get(tok)
+                if not p or p["status"] != "SUCCESS":
+                    return self.send(404, {"error": {"code": "not_paid"}})
+                amount = int(urllib.parse.parse_qs(u.query).get("amount", [str(p["amount"])])[0])
+                code = notify(state, p["invoice_number"], amount, "SUCCESS", p["request_id"], type_="REFUND")
+                return self.send(200, {"notified": code, "type": "REFUND", "amount": amount})
             if u.path == "/simulate/notify":
                 try:
                     req = json.loads(raw or b"{}")
                     code = notify(state, str(req["invoice_number"]), int(req["amount"]), req.get("status", "SUCCESS"),
-                                  req.get("original_request_id") or str(uuid.uuid4()), req.get("channel", "QRIS"))
+                                  req.get("original_request_id") or str(uuid.uuid4()), req.get("channel", "QRIS"),
+                                  req.get("type", "SALE"))
                 except (ValueError, KeyError, TypeError):
                     return self.send(400, {"error": {"code": "invalid_request"}})
                 return self.send(200, {"notified": code})
