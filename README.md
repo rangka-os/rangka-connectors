@@ -26,9 +26,15 @@ Part of the Rangka family: [rangka-os](https://github.com/rangka-os/rangka-os) Â
 Specs with a `fixtures/` folder are checked without network or account: `python3 tests/check_fixtures.py` (needs PyYAML) resolves
 every emit and output against the synthetic payloads and the values pinned in `fixtures/expect.json`.
 `python3 tests/check_doku_mock.py` (stdlib) checks the DOKU mock: its signatures equal the vectors the kernel is
-tested with, and a simulated payment reaches a hook signed so that the receiver recomputes it.
+tested with, a simulated payment reaches a hook signed so that the receiver recomputes it, and a simulated refund
+arrives as a signed notification of type REFUND (never money in).
 `python3 tests/check_xendit_mock.py` (stdlib) checks the Xendit mock: Basic auth, one VA per invoice, a closed or single-use VA
 and a dynamic QR paid once, and callbacks that carry the token and every field the connector's triggers emit from.
+`moka/mock/moka_mock.py` stands in for the Moka API (outlets and latest transactions from fixtures, Bearer token, the
+`since` window, `next_url` pages, `--day` to move a fixture to any date) and its `poll` command reads it the way the
+kernel's poll trigger does and hands each event, in the trigger's emit shape, to the tenant's flow
+`moka_transaction_staged` (the kernel calls `api.mokapos.com` only, so a local kernel cannot poll the mock itself).
+`python3 tests/check_moka_mock.py` (stdlib) checks it. Juragan's local end-to-end demo uses the three mocks with dummy keys.
 
 Until the kernel runs connectors, the retail and F&B apps read POS data from export files (rangka-apps
 `moka_item_details`, `loyverse_receipts`, `pos_sales_file`); the two POS specs above are what a scheduled flow will call.
