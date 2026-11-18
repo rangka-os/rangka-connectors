@@ -3,7 +3,7 @@
 # user name and password (or app password) of that mailbox. Works with any provider that offers IMAP/POP3 and SMTP:
 # the domain's hosting (cPanel, Niagahoster, Rumahweb), Google Workspace and Gmail (with an app password),
 # Microsoft 365, Zoho Mail.
-# Needs rangka-os contract 0067 (mail connectors): the mail: block and mail: actions are run by the kernel, not by HTTP.
+# Needs rangka-os contract 0068 (mail connectors): the mail: block and mail: actions are run by the kernel, not by HTTP.
 # - Every connection is encrypted: tls (implicit, ports 993/995/465) or starttls (143/110/587); certificates are
 #   checked and there is no plain-text mode.
 # - The first poll only notes where the mailbox is: mail already there is not replayed into flows.

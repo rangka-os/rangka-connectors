@@ -12,7 +12,7 @@ For a connector with a fixtures/ folder:
 - an emit that is an expression (==, ||, &&, string literals) is evaluated on the fixture;
 - fixtures/expect.json pins values per fixture ({"<file>": {"<emit>": value}}); a field pinned to null may be absent;
 - every {input.x}, {auth.x} and settings.x the spec reads is declared (in requests and in a mail connector's mail:);
-- a mail: fetch answer (rangka-os contract 0067) has messages and a cursor, each message every field its trigger emits.
+- a mail: fetch answer (rangka-os contract 0068) has messages and a cursor, each message every field its trigger emits.
 This keeps a spec honest about the payloads it was written from, before the kernel sends a real request.
 """
 import glob
@@ -121,7 +121,7 @@ def check(name):
                 errs.append(f"action {a['name']}: {kind}.{x} is not declared")
         if a.get("output"):
             mapping("action", a["name"], a["output"], sorted(glob.glob(os.path.join(fx, a["name"] + ".json"))))
-    # a mail connector (rangka-os contract 0067): the mail: block reads declared auth fields only, and the answer of a
+    # a mail connector (rangka-os contract 0068): the mail: block reads declared auth fields only, and the answer of a
     # mail: fetch action (<action>.json) holds messages and a cursor, each message with every field the poll trigger
     # that sends it emits from item
     for x in sorted(set(re.findall(r"auth\.([a-z_][a-z0-9_]*)", json.dumps(spec.get("mail") or {}))) - auth):
