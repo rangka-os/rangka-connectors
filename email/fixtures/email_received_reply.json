@@ -1,0 +1,31 @@
+{
+ "item": {
+  "message_id": "re-0077@pelanggan-contoh.id",
+  "from": "budi@pelanggan-contoh.id",
+  "from_name": "Budi Contoh",
+  "to": [
+   "toko@kopi-contoh.id"
+  ],
+  "cc": [],
+  "reply_to": [],
+  "subject": "Re: Konfirmasi PO 77",
+  "date": "2026-11-17T02:30:00Z",
+  "in_reply_to": "3f9a0c1d2e4b6a8c0e1f2a3b@kopi-contoh.id",
+  "references": [
+   "3f9a0c1d2e4b6a8c0e1f2a3b@kopi-contoh.id"
+  ],
+  "text": "Oke, ditunggu pengirimannya.\n",
+  "html": "",
+  "truncated": false,
+  "attachments": [
+   {
+    "filename": "foto-gudang.mov",
+    "content_type": "video/quicktime",
+    "size": 41943040,
+    "skipped": "too_large"
+   }
+  ],
+  "uid": "4813",
+  "size": 41960112
+ }
+}

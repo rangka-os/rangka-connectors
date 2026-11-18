@@ -11,7 +11,8 @@ For a connector with a fixtures/ folder:
 - every emit / output that is a field path resolves in each of its fixtures (null is allowed: the field is there);
 - an emit that is an expression (==, ||, &&, string literals) is evaluated on the fixture;
 - fixtures/expect.json pins values per fixture ({"<file>": {"<emit>": value}}); a field pinned to null may be absent;
-- every {input.x}, {auth.x} and settings.x the spec reads is declared.
+- every {input.x}, {auth.x} and settings.x the spec reads is declared (in requests and in a mail connector's mail:);
+- a mail: fetch answer (rangka-os contract 0068) has messages and a cursor, each message every field its trigger emits.
 This keeps a spec honest about the payloads it was written from, before the kernel sends a real request.
 """
 import glob
@@ -120,6 +121,28 @@ def check(name):
                 errs.append(f"action {a['name']}: {kind}.{x} is not declared")
         if a.get("output"):
             mapping("action", a["name"], a["output"], sorted(glob.glob(os.path.join(fx, a["name"] + ".json"))))
+    # a mail connector (rangka-os contract 0068): the mail: block reads declared auth fields only, and the answer of a
+    # mail: fetch action (<action>.json) holds messages and a cursor, each message with every field the poll trigger
+    # that sends it emits from item
+    for x in sorted(set(re.findall(r"auth\.([a-z_][a-z0-9_]*)", json.dumps(spec.get("mail") or {}))) - auth):
+        errs.append(f"mail: auth.{x} is not declared")
+    for a in spec.get("actions", []):
+        if a.get("mail") != "fetch":
+            continue
+        for f in sorted(glob.glob(os.path.join(fx, a["name"] + ".json"))):
+            doc = json.load(open(f))
+            n += 1
+            if not isinstance(doc.get("messages"), list) or not isinstance(doc.get("cursor"), str):
+                errs.append(f"{os.path.basename(f)}: a fetch answer has messages (a list) and cursor (a text)")
+                continue
+            for t in spec.get("triggers", []):
+                if t.get("action") != a["name"]:
+                    continue
+                for i, m in enumerate(doc["messages"]):
+                    for key, val in (t.get("emit") or {}).items():
+                        n += 1
+                        if PATH.match(str(val)) and str(val).startswith("item.") and resolve({"item": m}, str(val)) is MISSING:
+                            errs.append(f"{os.path.basename(f)}: messages[{i}] has no {str(val)[5:]} (emit {key})")
     for t in spec.get("triggers", []):
         for k, v in (t.get("verify") or {}).items():
             for x in re.findall(r"auth\.([a-z_][a-z0-9_]*)", str(v)):

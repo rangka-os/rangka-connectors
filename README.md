@@ -22,9 +22,12 @@ Part of the Rangka family: [rangka-os](https://github.com/rangka-os/rangka-os) Â
 | [`loyverse`](loyverse/connector.rk) | Loyverse POS API v1.0 (personal access token) | `receipt_updated`, `inventory_level_updated` (webhooks) | `list_receipts`, `list_stores`, `list_items`, `create_webhook` | Spec (fields from the public API reference, not checked against a live account) |
 | [`moka`](moka/connector.rk) | Moka POS Connect API (OAuth 2.0) | `transaction_created` (poll every 5 min of the transactions Moka received in the last two days, newest first, every page through `next_url`, so late refunds and offline syncs come in again; an outlet moves from the export file to the API from its `moka_api_from` day in rangka-apps) | `latest_transactions`, `list_outlets`, `list_items` | Spec (paths to confirm once Moka approves API access; synthetic fixtures for two outlets, a refund at sale time, a refund made the next day and the per-outlet `each:` item in `moka/fixtures`) |
 | [`biteship`](biteship/connector.rk) | Biteship shipping aggregator (JNE, J&T, SiCepat, AnterAja, GoSend, Grab and more) | `order_status`, `order_price`, `order_waybill` (webhooks, `x-biteship-secret` header checked; `delivered`/`failed`/`on_the_way` derived from the status) | `search_areas`, `get_rates`, `create_order` (idempotent on the reference), `get_order`, `cancel_order`, `get_tracking` | Spec (public API reference; synthetic fixtures in `biteship/fixtures`, checked by `tests/check_fixtures.py`; no account used) |
+| [`email`](email/connector.rk) | The business's own mailbox: IMAP or POP3 to receive, SMTP to send (domain hosting, Google Workspace and Gmail with an app password, Microsoft 365, Zoho) | `email_received` (poll every 2 min after an IMAP UID or the POP3 UIDLs seen; the first poll replays nothing; nothing is deleted on the server; attachments kept in Rangka's attachments store) | `send_email` (SMTP over TLS or STARTTLS, with retries for 4xx replies), `fetch_email` (the trigger's) | Spec (needs rangka-os contract 0068, mail connectors; synthetic fixtures in `email/fixtures`, checked by `tests/check_fixtures.py`; the kernel's own tests run it against in-process IMAP, POP3 and SMTP servers) |
 
 Specs with a `fixtures/` folder are checked without network or account: `python3 tests/check_fixtures.py` (needs PyYAML) resolves
 every emit and output against the synthetic payloads and the values pinned in `fixtures/expect.json`.
+For `email`, the fixtures are the kernel's fetch answer (`fetch_email.json`: `messages` and `cursor`) and one message
+per trigger case, as `for_each` binds it.
 `python3 tests/check_doku_mock.py` (stdlib) checks the DOKU mock: its signatures equal the vectors the kernel is
 tested with, a simulated payment reaches a hook signed so that the receiver recomputes it, and a simulated refund
 arrives as a signed notification of type REFUND (never money in).
@@ -112,7 +115,9 @@ Create `<name>/connector.rk` with the schema line
 `# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.4/connector.json` and declare `auth` (fields marked
 `secret: true`), `triggers` (`via: webhook` with verification, or `via: poll` naming the `action` to send, with
 `input`, `cursor` and optionally `each` for one call per outlet; `for_each` and `emit` mapping) and `actions`
-(request, response mapping, `retry`). Validate it together with the apps:
+(request, response mapping, `retry`). A mail connector (rangka-os contract 0068, like `email`) declares its servers
+once in a `mail:` block and its actions say `mail: fetch` or `mail: send` instead of `request:`. Validate it together
+with the apps:
 
 ```bash
 python3 ../rangka-os/tools/rangka_validate.py ../rangka-apps/apps --site ../rangka-apps/sites/kopi-senja --connectors .

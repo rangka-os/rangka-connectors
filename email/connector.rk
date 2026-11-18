@@ -1,0 +1,144 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/connector.json
+# Email: the business's own mailbox. New mail is read over IMAP (or POP3) and replies go out over SMTP, with the
+# user name and password (or app password) of that mailbox. Works with any provider that offers IMAP/POP3 and SMTP:
+# the domain's hosting (cPanel, Niagahoster, Rumahweb), Google Workspace and Gmail (with an app password),
+# Microsoft 365, Zoho Mail.
+# Needs rangka-os contract 0068 (mail connectors): the mail: block and mail: actions are run by the kernel, not by HTTP.
+# - Every connection is encrypted: tls (implicit, ports 993/995/465) or starttls (143/110/587); certificates are
+#   checked and there is no plain-text mode.
+# - The first poll only notes where the mailbox is: mail already there is not replayed into flows.
+# - Nothing is deleted on the server. IMAP reads with BODY.PEEK (mail stays unread unless mark_seen is true); POP3
+#   never sends DELE.
+# - Attachments are kept in Rangka's attachments store; the event carries their ids.
+# fixtures/ are synthetic (no real mailbox): the kernel's fetch answer and the event it emits.
+name: email
+label: {id: Email (IMAP/SMTP), en: Email (IMAP/SMTP)}
+summary:
+  id: Terima dan kirim email lewat kotak masuk bisnismu (IMAP/POP3 dan SMTP).
+  en: Receive and send email through your business mailbox (IMAP/POP3 and SMTP).
+category: messaging
+icon: mail-line
+version: 0.1.0
+docs: https://www.rfc-editor.org/rfc/rfc9051
+auth:
+  type: basic
+  fields:
+    - name: username
+      label: {id: Nama pengguna}
+      help: {id: 'Biasanya alamat email lengkap, misalnya toko@usahamu.id'}
+    - name: password
+      label: {id: Kata sandi}
+      secret: true
+      help: {id: 'Untuk Gmail dan Microsoft 365 pakai sandi aplikasi (app password), bukan sandi login'}
+    - name: from_address
+      label: {id: Alamat pengirim}
+      help: {id: Alamat yang tampil sebagai pengirim email keluar}
+    - name: from_name
+      label: {id: Nama pengirim}
+      required: false
+      help: {id: Misalnya nama usahamu}
+    - name: receive_protocol
+      label: {id: Cara menerima}
+      required: false
+      help: {id: imap (disarankan) atau pop3. Kosong berarti imap}
+    - name: receive_host
+      label: {id: Server email masuk}
+      required: false
+      help: {id: 'Misalnya imap.gmail.com, outlook.office365.com atau mail.usahamu.id'}
+    - name: receive_port
+      label: {id: Port email masuk}
+      required: false
+      help: {id: Kosong berarti 993 (IMAP) atau 995 (POP3)}
+    - name: receive_tls
+      label: {id: Enkripsi email masuk}
+      required: false
+      help: {id: tls (bawaan) atau starttls}
+    - name: folder
+      label: {id: Folder}
+      required: false
+      help: {id: Folder IMAP yang dibaca. Kosong berarti INBOX}
+    - name: mark_seen
+      label: {id: Tandai sudah dibaca}
+      required: false
+      help: {id: true menandai email yang sudah diambil sebagai dibaca (IMAP). Kosong berarti tidak}
+    - name: smtp_host
+      label: {id: Server email keluar (SMTP)}
+      required: false
+      help: {id: 'Misalnya smtp.gmail.com, smtp.office365.com atau mail.usahamu.id'}
+    - name: smtp_port
+      label: {id: Port SMTP}
+      required: false
+      help: {id: Kosong berarti 465 (tls) atau 587 (starttls)}
+    - name: smtp_tls
+      label: {id: Enkripsi SMTP}
+      required: false
+      help: {id: tls (bawaan) atau starttls. Microsoft 365 memakai starttls di port 587}
+mail:
+  receive:
+    protocol: '{auth.receive_protocol}'
+    host: '{auth.receive_host}'
+    port: '{auth.receive_port}'
+    tls: '{auth.receive_tls}'
+    folder: '{auth.folder}'
+    mark_seen: '{auth.mark_seen}'
+  send:
+    host: '{auth.smtp_host}'
+    port: '{auth.smtp_port}'
+    tls: '{auth.smtp_tls}'
+  username: '{auth.username}'
+  password: '{auth.password}'
+  from: '{auth.from_address}'
+  from_name: '{auth.from_name}'
+triggers:
+  # Every 2 minutes the kernel reads the mail after the cursor (an IMAP UID, or the POP3 UIDLs seen), at most 25 per
+  # poll, oldest first. An event is the message as it arrived; a message read again (a lost cursor) emits the same
+  # event and the kernel drops it. Flows that create records set idempotency: event.message_id.
+  - name: email_received
+    label: {id: Email masuk}
+    via: poll
+    every: 2m
+    action: fetch_email
+    input: {cursor: cursor}
+    cursor: cursor
+    for_each: 'messages[]'
+    emit:
+      message_id: item.message_id
+      from: item.from
+      from_name: item.from_name
+      to: item.to
+      cc: item.cc
+      reply_to: item.reply_to
+      subject: item.subject
+      text: item.text
+      html: item.html
+      date: item.date
+      in_reply_to: item.in_reply_to
+      references: item.references
+      # [{id, filename, content_type, size, sha256, url}]; a part too large or not kept has skipped: instead of id
+      attachments: item.attachments
+      truncated: item.truncated
+actions:
+  - name: fetch_email
+    label: {id: Ambil email baru}
+    mail: fetch
+    input:
+      - {name: cursor, label: {id: Posisi terakhir}}
+  - name: send_email
+    label: {id: Kirim email}
+    mail: send
+    input:
+      - {name: to, label: {id: Kepada}, required: true, help: {id: Satu alamat atau daftar alamat}}
+      - {name: cc, label: {id: Tembusan}}
+      - {name: bcc, label: {id: Tembusan tersembunyi}}
+      - {name: subject, label: {id: Subjek}, required: true}
+      - {name: text, label: {id: Isi (teks)}}
+      - {name: html, label: {id: Isi (HTML)}}
+      - {name: reply_to, label: {id: Balas ke}}
+      - {name: in_reply_to, label: {id: Membalas email}, help: {id: 'message_id email yang dibalas, agar masuk ke utas yang sama'}}
+      - {name: references, label: {id: Rujukan utas}}
+      - {name: attachments, label: {id: Lampiran}, help: {id: Daftar id lampiran Rangka}}
+    output:
+      message_id: message_id
+      recipients: recipients
+    # SMTP 4xx replies and network errors are retried; 5xx (a refused address, a wrong password) are not
+    retry: {max: 5, backoff: exponential}
