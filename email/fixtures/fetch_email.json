@@ -1,0 +1,66 @@
+{
+ "messages": [
+  {
+   "message_id": "po-0077@pelanggan-contoh.id",
+   "from": "budi@pelanggan-contoh.id",
+   "from_name": "Budi Contoh",
+   "to": [
+    "toko@kopi-contoh.id"
+   ],
+   "cc": [
+    "sari@kopi-contoh.id"
+   ],
+   "reply_to": [],
+   "subject": "PO 77: kopi arabika 10 kg",
+   "date": "2026-11-17T02:30:00Z",
+   "in_reply_to": "",
+   "references": [],
+   "text": "Halo, terlampir PO 77 untuk 10 kg arabika. Mohon konfirmasi.\n",
+   "html": "<p>Halo, terlampir PO 77 untuk 10 kg arabika. Mohon konfirmasi.</p>",
+   "truncated": false,
+   "attachments": [
+    {
+     "id": "att_0123456789abcdef0123",
+     "filename": "po-77.pdf",
+     "content_type": "application/pdf",
+     "size": 18234,
+     "sha256": "5f3c0de1a2b4c6d8e0f1a3b5c7d9e1f3a5b7c9d1e3f5a7b9c1d3e5f7a9b1c3d5",
+     "url": "/api/v1/attachments/att_0123456789abcdef0123"
+    }
+   ],
+   "uid": "4812",
+   "size": 27410
+  },
+  {
+   "message_id": "re-0077@pelanggan-contoh.id",
+   "from": "budi@pelanggan-contoh.id",
+   "from_name": "Budi Contoh",
+   "to": [
+    "toko@kopi-contoh.id"
+   ],
+   "cc": [],
+   "reply_to": [],
+   "subject": "Re: Konfirmasi PO 77",
+   "date": "2026-11-17T02:30:00Z",
+   "in_reply_to": "3f9a0c1d2e4b6a8c0e1f2a3b@kopi-contoh.id",
+   "references": [
+    "3f9a0c1d2e4b6a8c0e1f2a3b@kopi-contoh.id"
+   ],
+   "text": "Oke, ditunggu pengirimannya.\n",
+   "html": "",
+   "truncated": false,
+   "attachments": [
+    {
+     "filename": "foto-gudang.mov",
+     "content_type": "video/quicktime",
+     "size": 41943040,
+     "skipped": "too_large"
+    }
+   ],
+   "uid": "4813",
+   "size": 41960112
+  }
+ ],
+ "cursor": "imap:1731800000:4813:INBOX",
+ "baseline": false
+}
