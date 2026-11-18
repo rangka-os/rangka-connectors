@@ -1,0 +1,241 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/connector.json
+# Midtrans (Indonesia): Snap makes a payment page for an invoice (QRIS, virtual accounts, e-wallets, whatever the
+# account has enabled); the Core API charges one channel directly (a dynamic QRIS for the counter, a bank transfer
+# virtual account, GoPay). Midtrans sends an HTTP notification on every status change.
+# Every request uses the server key as the Basic auth user name with an empty password.
+# Notifications carry their own signature in the body: signature_key = hex(SHA-512(order_id + status_code +
+# gross_amount + server key)), checked by the kernel before any flow runs (rangka-os contract 0002, body-field
+# signatures, refinement of 19 Nov 2026). Research and sources: rangka (Juragan) reports/keputusan-riset/midtrans-connector.md.
+# Only order_id, status_code and gross_amount are signed. What a flow acts on therefore comes from those three:
+# gateway_ref is the order id (one Midtrans transaction per order id, the key Midtrans itself names for idempotent
+# handling), external_id is our invoice number read from it, paid_amount is gross_amount, and paid needs status_code
+# 200. transaction_id, the times and refund_amount are not signed: they are for people to read, never a key.
+# An order id is used once at Midtrans: the first page or charge for an invoice uses the invoice number, a later one
+# (the first expired) uses <number>~<attempt>, attempt 2 to 9, and external_id drops that ending again.
+# The trigger fires for every notification (pending, settlement, expire, refund ...): a flow that records money starts
+# with `if: event.paid` and holds gateway_ref in gateway_ref_claim, as with doku and xendit.
+# Test mode: api_host api.sandbox.midtrans.com and snap_host app.sandbox.midtrans.com with the sandbox server key; the
+# sandbox simulator pays and notifies. Until a sandbox account exists, midtrans/mock/midtrans_mock.py answers Snap, the
+# Core API and the status call, and sends signed notifications locally.
+name: midtrans
+label: {id: Midtrans}
+summary:
+  id: Terima pembayaran QRIS, virtual account dan e-wallet lewat Midtrans.
+  en: Take QRIS, virtual account and e-wallet payments through Midtrans.
+category: payments
+icon: secure-payment-line
+version: 0.1.0
+vendor: Midtrans
+docs: https://docs.midtrans.com/
+hosts: [api.sandbox.midtrans.com, api.midtrans.com, app.sandbox.midtrans.com, app.midtrans.com]
+auth:
+  type: basic
+  fields:
+    - name: server_key
+      label: {id: Server key}
+      secret: true
+      required: true
+      help: {id: 'Dashboard Midtrans > Settings > Access Keys. Kunci sandbox (diawali SB-Mid-server-) untuk uji'}
+    - name: api_host
+      label: {id: Server Core API}
+      required: true
+      help: {id: 'api.sandbox.midtrans.com untuk uji, api.midtrans.com untuk transaksi nyata'}
+    - name: snap_host
+      label: {id: Server Snap}
+      required: true
+      help: {id: 'app.sandbox.midtrans.com untuk uji, app.midtrans.com untuk transaksi nyata'}
+triggers:
+  - name: payment_notified
+    label: {id: Notifikasi pembayaran Midtrans}
+    via: webhook
+    verify:
+      signature:
+        field: signature_key
+        alg: sha512
+        key: server_key
+        concat: ['{body.order_id}', '{body.status_code}', '{body.gross_amount}', '{auth.server_key}']
+    emit:
+      # the order id (signed): stable per payment, the idempotency key and payment.gateway_ref
+      gateway_ref: order_id
+      # our invoice number: the order id without the ~<attempt> ending of a second or later page
+      external_id: >-
+        order_id.endsWith('~2') ? order_id.replace('~2', '') : order_id.endsWith('~3') ? order_id.replace('~3', '')
+        : order_id.endsWith('~4') ? order_id.replace('~4', '') : order_id.endsWith('~5') ? order_id.replace('~5', '')
+        : order_id.endsWith('~6') ? order_id.replace('~6', '') : order_id.endsWith('~7') ? order_id.replace('~7', '')
+        : order_id.endsWith('~8') ? order_id.replace('~8', '') : order_id.endsWith('~9') ? order_id.replace('~9', '')
+        : order_id
+      # gross_amount (signed) is a text with two decimals ("750000.00"); flows read it as a number
+      paid_amount: gross_amount
+      status: transaction_status
+      status_code: status_code
+      # Midtrans: a payment is complete when status_code is 200, the status is settlement (or capture, for a card)
+      # and fraud_status, when sent, is accept. status_code is the signed half: 201 is pending, 202 denied.
+      paid: "status_code == '200' && (transaction_status == 'settlement' || transaction_status == 'capture') && (!('fraud_status' in body) || fraud_status == 'accept')"
+      # a refund made in the Midtrans dashboard or by API: money out of the Midtrans balance, never money in
+      refunded: "status_code == '200' && (transaction_status == 'refund' || transaction_status == 'partial_refund')"
+      # Midtrans's payment_type (qris, bank_transfer, echannel, gopay, shopeepay, credit_card, ...); flows map it to
+      # payment.method
+      channel: payment_type
+      # not signed, for people to read only
+      transaction_id: transaction_id
+      paid_at: transaction_time
+      refund_amount: "'refund_amount' in body ? refund_amount : null"
+actions:
+  - name: create_snap
+    label: {id: Buat halaman bayar Midtrans}
+    request:
+      method: POST
+      url: https://{auth.snap_host}/snap/v1/transactions
+      body:
+        transaction_details:
+          order_id: '{input.order_id}'
+          gross_amount: '{input.amount}'
+        enabled_payments: '{input.methods}'
+        expiry:
+          unit: minutes
+          duration: '{input.due_minutes}'
+        customer_details:
+          first_name: '{input.customer_name}'
+          phone: '{input.customer_phone}'
+        callbacks:
+          finish: '{input.return_url}'
+    input:
+      - {name: external_id, type: data, required: true, help: {id: 'Nomor faktur (huruf, angka, - _ . ; maks 48), kembali sebagai external_id. Bayar dicatat ke faktur saja'}}
+      - {name: amount, type: currency, required: true, help: {id: Rupiah utuh}}
+      - {name: methods, type: json, default: "['other_qris', 'gopay', 'bca_va', 'bni_va', 'bri_va', 'permata_va']", help: {id: 'Saluran yang ditawarkan di halaman bayar (enabled_payments Midtrans)'}}
+      - {name: due_minutes, type: int, default: '60'}
+      - {name: return_url, type: data}
+      - {name: customer_name, type: data}
+      - {name: customer_phone, type: data}
+      # an order id is used once at Midtrans: a new page for the same invoice after the old one expired is the next
+      # attempt (2 to 9), sent as <number>~<attempt>
+      - {name: attempt, type: int, default: '1', help: {id: 'Naikkan (2 sampai 9) untuk membuat halaman bayar baru setelah yang lama kedaluwarsa'}}
+      # derived, leave it out: the invoice number, or <number>~<attempt> from the second attempt on (a request
+      # template only fills placeholders, so the order id is worked out here, as a default)
+      - {name: order_id, type: data, default: "input.attempt > 1 ? input.external_id + '~' + string(input.attempt) : input.external_id"}
+    output:
+      payment_url: redirect_url
+      token_id: token
+    retry: {max: 5, backoff: exponential, on: [429, 500, 502, 503]}
+    idempotency: input.external_id + ':' + string(input.amount) + ':' + string(input.attempt)
+  - name: charge_qris
+    label: {id: Buat QRIS dinamis}
+    request:
+      method: POST
+      url: https://{auth.api_host}/v2/charge
+      body:
+        payment_type: qris
+        transaction_details:
+          order_id: '{input.order_id}'
+          gross_amount: '{input.amount}'
+        qris:
+          acquirer: '{input.acquirer}'
+        custom_expiry:
+          expiry_duration: '{input.due_minutes}'
+          unit: minute
+    input:
+      - {name: external_id, type: data, required: true, help: {id: Nomor faktur penjualan}}
+      - {name: amount, type: currency, required: true, help: {id: Rupiah utuh}}
+      - {name: acquirer, type: data, default: "'gopay'", help: {id: 'gopay atau airpay shopee, sesuai yang aktif di akun'}}
+      - {name: due_minutes, type: int, default: '15'}
+      - {name: attempt, type: int, default: '1'}
+      - {name: order_id, type: data, default: "input.attempt > 1 ? input.external_id + '~' + string(input.attempt) : input.external_id"}
+    output:
+      gateway_ref: order_id
+      transaction_id: transaction_id
+      status: transaction_status
+      status_code: status_code
+      # the QR as an image (actions[0], generate-qr-code) and, when Midtrans sends it, the QRIS text itself
+      qr_url: "size(actions) > 0 ? actions[0].url : null"
+      qr_string: "'qr_string' in response ? qr_string : null"
+      expires_at: "'expiry_time' in response ? expiry_time : null"
+    retry: {max: 5, backoff: exponential, on: [429, 500, 502, 503]}
+    idempotency: input.external_id + ':' + string(input.amount) + ':' + string(input.attempt)
+  - name: charge_va
+    label: {id: Buat virtual account}
+    request:
+      method: POST
+      url: https://{auth.api_host}/v2/charge
+      body:
+        payment_type: bank_transfer
+        transaction_details:
+          order_id: '{input.order_id}'
+          gross_amount: '{input.amount}'
+        bank_transfer:
+          bank: '{input.bank}'
+        customer_details:
+          first_name: '{input.customer_name}'
+        custom_expiry:
+          expiry_duration: '{input.due_minutes}'
+          unit: minute
+    input:
+      - {name: external_id, type: data, required: true, help: {id: Nomor faktur penjualan}}
+      - {name: amount, type: currency, required: true, help: {id: Rupiah utuh}}
+      - {name: bank, type: data, required: true, help: {id: 'bca, bni, bri, permata atau cimb'}}
+      - {name: customer_name, type: data}
+      - {name: due_minutes, type: int, default: '1440'}
+      - {name: attempt, type: int, default: '1'}
+      - {name: order_id, type: data, default: "input.attempt > 1 ? input.external_id + '~' + string(input.attempt) : input.external_id"}
+    output:
+      gateway_ref: order_id
+      transaction_id: transaction_id
+      status: transaction_status
+      status_code: status_code
+      # BCA, BNI, BRI and CIMB answer with va_numbers; Permata with permata_va_number
+      account_number: "'va_numbers' in response && size(va_numbers) > 0 ? va_numbers[0].va_number : ('permata_va_number' in response ? permata_va_number : null)"
+      bank_code: "'va_numbers' in response && size(va_numbers) > 0 ? va_numbers[0].bank : ('permata_va_number' in response ? 'permata' : null)"
+      expires_at: "'expiry_time' in response ? expiry_time : null"
+    retry: {max: 5, backoff: exponential, on: [429, 500, 502, 503]}
+    idempotency: input.external_id + ':' + string(input.amount) + ':' + string(input.attempt)
+  - name: charge_gopay
+    label: {id: Buat tagihan GoPay}
+    request:
+      method: POST
+      url: https://{auth.api_host}/v2/charge
+      body:
+        payment_type: gopay
+        transaction_details:
+          order_id: '{input.order_id}'
+          gross_amount: '{input.amount}'
+        gopay:
+          enable_callback: '{input.use_callback}'
+          callback_url: '{input.return_url}'
+    input:
+      - {name: external_id, type: data, required: true, help: {id: Nomor faktur penjualan}}
+      - {name: amount, type: currency, required: true, help: {id: Rupiah utuh}}
+      - {name: return_url, type: data, help: {id: 'Alamat kembali setelah bayar di aplikasi Gojek'}}
+      # derived, leave it out: GoPay returns to return_url only when there is one
+      - {name: use_callback, type: check, default: "'return_url' in input && input.return_url != ''"}
+      - {name: attempt, type: int, default: '1'}
+      - {name: order_id, type: data, default: "input.attempt > 1 ? input.external_id + '~' + string(input.attempt) : input.external_id"}
+    output:
+      gateway_ref: order_id
+      transaction_id: transaction_id
+      status: transaction_status
+      status_code: status_code
+      # actions: generate-qr-code, deeplink-redirect, get-status, cancel
+      qr_url: "size(actions) > 0 ? actions[0].url : null"
+      deeplink_url: "size(actions) > 1 ? actions[1].url : null"
+    retry: {max: 5, backoff: exponential, on: [429, 500, 502, 503]}
+    idempotency: input.external_id + ':' + string(input.amount) + ':' + string(input.attempt)
+  - name: get_status
+    label: {id: Cek status pembayaran}
+    request:
+      method: GET
+      url: https://{auth.api_host}/v2/{input.gateway_ref}/status
+    input:
+      - {name: gateway_ref, type: data, required: true, help: {id: 'Order id Midtrans (gateway_ref pembayaran)'}}
+    output:
+      gateway_ref: "'order_id' in response ? order_id : null"
+      status: "'transaction_status' in response ? transaction_status : null"
+      # 200 settled, 201 pending, 202 denied, 404 no such transaction, 407 expired
+      status_code: status_code
+      paid: "status_code == '200' && 'transaction_status' in response && (transaction_status == 'settlement' || transaction_status == 'capture') && (!('fraud_status' in response) || fraud_status == 'accept')"
+      paid_amount: "'gross_amount' in response ? gross_amount : null"
+      channel: "'payment_type' in response ? payment_type : null"
+      transaction_id: "'transaction_id' in response ? transaction_id : null"
+    retry: {max: 3, backoff: exponential, on: [429, 500, 502, 503]}
+    idempotency: input.gateway_ref
+limits:
+  rate: per Midtrans account
+  note: {id: 'Biaya per transaksi dipotong Midtrans sebelum settlement. Refund dibuat di dashboard Midtrans'}

@@ -1,0 +1,34 @@
+{
+ "status_code": "201",
+ "status_message": "GO-PAY billing created",
+ "transaction_id": "231c79c5-e39e-4993-86da-000000000011",
+ "order_id": "INV-2026-00011",
+ "gross_amount": "85000.00",
+ "currency": "IDR",
+ "payment_type": "gopay",
+ "transaction_time": "2026-11-19 10:30:00",
+ "transaction_status": "pending",
+ "fraud_status": "accept",
+ "actions": [
+  {
+   "name": "generate-qr-code",
+   "method": "GET",
+   "url": "https://api.sandbox.midtrans.com/v2/gopay/231c79c5-e39e-4993-86da-000000000011/qr-code"
+  },
+  {
+   "name": "deeplink-redirect",
+   "method": "GET",
+   "url": "https://simulator.sandbox.midtrans.com/gopay/partner/app/payment-pin?id=contoh-0011"
+  },
+  {
+   "name": "get-status",
+   "method": "GET",
+   "url": "https://api.sandbox.midtrans.com/v2/231c79c5-e39e-4993-86da-000000000011/status"
+  },
+  {
+   "name": "cancel",
+   "method": "POST",
+   "url": "https://api.sandbox.midtrans.com/v2/231c79c5-e39e-4993-86da-000000000011/cancel"
+  }
+ ]
+}

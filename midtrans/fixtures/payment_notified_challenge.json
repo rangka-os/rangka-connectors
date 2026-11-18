@@ -1,0 +1,14 @@
+{
+ "transaction_time": "2026-11-19 10:12:40",
+ "transaction_status": "capture",
+ "transaction_id": "9f1c7a52-3b8e-4d61-a2f4-000000000007",
+ "status_message": "midtrans payment notification",
+ "status_code": "200",
+ "signature_key": "(hex SHA-512, see signature_vector.txt)",
+ "payment_type": "credit_card",
+ "order_id": "INV-2026-00010",
+ "merchant_id": "G000000001",
+ "gross_amount": "990000.00",
+ "fraud_status": "challenge",
+ "currency": "IDR"
+}
