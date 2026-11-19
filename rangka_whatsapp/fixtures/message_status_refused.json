@@ -1,0 +1,1 @@
+{"message_id": "", "idempotency_key": "INV-2026-00031:reminder:7", "type": "reminder", "status": "failed", "at": "2026-11-19T03:04:05Z", "error": "recipient_opted_out"}
