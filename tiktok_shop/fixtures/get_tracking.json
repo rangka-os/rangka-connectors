@@ -1,0 +1,28 @@
+{
+ "code": 0,
+ "message": "Success",
+ "request_id": "202611180100000101890810281E8C7001",
+ "data": {
+  "package_id": "1152000000000000102",
+  "orders": [
+   {
+    "id": "577001234500000102"
+   }
+  ],
+  "package_status": "FULFILLING",
+  "package_sub_status": "",
+  "shipping_provider_name": "J&T Express",
+  "shipping_provider_id": "7100000000000000001",
+  "shipping_type": "TIKTOK",
+  "delivery_option_name": "Reguler",
+  "tracking_number": "JX0000000102",
+  "handover_method": "PICKUP",
+  "order_line_item_ids": [
+   "7001234500000001102",
+   "7001234500000002102"
+  ],
+  "create_time": 1794988000,
+  "update_time": 1794990000,
+  "warehouse_id": "7300000000000000001"
+ }
+}

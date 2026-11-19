@@ -1,0 +1,101 @@
+{
+  "order": {
+    "order_sn": "261116TC00005E",
+    "order_status": "COMPLETED"
+  },
+  "item": {
+    "order_sn": "261116TC00005E",
+    "region": "ID",
+    "currency": "IDR",
+    "cod": false,
+    "order_status": "COMPLETED",
+    "message_to_seller": "",
+    "create_time": 1794790800,
+    "update_time": 1794964800,
+    "days_to_ship": 2,
+    "ship_by_date": 1794963600,
+    "booking_sn": "",
+    "item_list": [
+      {
+        "item_id": 3001001,
+        "item_name": "Tahu goreng original",
+        "item_sku": "TH-ORI",
+        "model_id": 0,
+        "model_name": "",
+        "model_sku": "",
+        "model_quantity_purchased": 3,
+        "model_original_price": 15000,
+        "model_discounted_price": 15000,
+        "wholesale": false,
+        "weight": 0.25,
+        "add_on_deal": false,
+        "main_item": false,
+        "add_on_deal_id": 0,
+        "promotion_type": "",
+        "promotion_id": 0,
+        "order_item_id": 3001001,
+        "promotion_group_id": 0,
+        "line_item_id": 1
+      },
+      {
+        "item_id": 3001002,
+        "item_name": "Tahu goreng",
+        "item_sku": "TH",
+        "model_id": 4002001,
+        "model_name": "Pedas",
+        "model_sku": "TH-PDS",
+        "model_quantity_purchased": 2,
+        "model_original_price": 18000,
+        "model_discounted_price": 17000,
+        "wholesale": false,
+        "weight": 0.25,
+        "add_on_deal": false,
+        "main_item": false,
+        "add_on_deal_id": 0,
+        "promotion_type": "",
+        "promotion_id": 0,
+        "order_item_id": 3001002,
+        "promotion_group_id": 0,
+        "line_item_id": 2
+      }
+    ],
+    "pay_time": 1794790920,
+    "package_list": [
+      {
+        "package_number": "OFG261110000005",
+        "logistics_status": "LOGISTICS_DELIVERY_DONE",
+        "logistics_channel_id": 8003,
+        "shipping_carrier": "SPX Standard",
+        "allow_self_design_awb": false,
+        "group_shipment_id": null,
+        "parcel_chargeable_weight_gram": 500,
+        "item_list": [
+          {
+            "item_id": 3001001,
+            "model_id": 0,
+            "model_quantity": 3,
+            "order_item_id": 3001001,
+            "promotion_group_id": 0,
+            "product_location_id": "IDZ"
+          },
+          {
+            "item_id": 3001002,
+            "model_id": 4002001,
+            "model_quantity": 2,
+            "order_item_id": 3001002,
+            "promotion_group_id": 0,
+            "product_location_id": "IDZ"
+          }
+        ]
+      }
+    ],
+    "shipping_carrier": "SPX Standard",
+    "payment_method": "ShopeePay",
+    "cancel_by": "",
+    "cancel_reason": "",
+    "buyer_cancel_reason": "",
+    "pickup_done_time": 1794812400,
+    "fulfillment_flag": "fulfilled_by_local_seller",
+    "total_amount": 89000
+  }
+}

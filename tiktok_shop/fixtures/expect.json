@@ -1,0 +1,105 @@
+{
+ "order_changed.json": {
+  "channel": "tiktok_shop",
+  "storefront": "TIKTOK_SHOP",
+  "order_id": "577001234500000101",
+  "status": "AWAITING_SHIPMENT",
+  "sold": true,
+  "shipped": false,
+  "completed": false,
+  "cancelled": false,
+  "created_at": 1794963600,
+  "paid_at": 1794963660,
+  "updated_at": 1794963700,
+  "currency": "IDR",
+  "buyer_total": "56000"
+ },
+ "order_changed_tokopedia.json": {
+  "channel": "tiktok_shop",
+  "storefront": "TOKOPEDIA",
+  "order_id": "577001234500000102",
+  "status": "IN_TRANSIT",
+  "sold": true,
+  "shipped": true,
+  "completed": false,
+  "cancelled": false,
+  "paid_at": 1794967230,
+  "buyer_total": "46000"
+ },
+ "order_changed_unpaid.json": {
+  "storefront": "TIKTOK_SHOP",
+  "status": "UNPAID",
+  "sold": false,
+  "shipped": false,
+  "completed": false,
+  "cancelled": false,
+  "paid_at": null
+ },
+ "order_changed_on_hold.json": {
+  "storefront": "TOKOPEDIA",
+  "status": "ON_HOLD",
+  "sold": false,
+  "shipped": false,
+  "completed": false,
+  "cancelled": false
+ },
+ "order_changed_cancelled.json": {
+  "status": "CANCELLED",
+  "sold": false,
+  "shipped": false,
+  "completed": false,
+  "cancelled": true
+ },
+ "order_changed_completed.json": {
+  "status": "COMPLETED",
+  "sold": true,
+  "shipped": true,
+  "completed": true,
+  "cancelled": false
+ },
+ "order_settled.json": {
+  "channel": "tiktok_shop",
+  "order_id": "577001234500000106",
+  "currency": "IDR",
+  "settled_at": 1794985200,
+  "net": "26550",
+  "adjusted_net": null,
+  "commission_fee": "-1200",
+  "service_fee": null,
+  "transaction_fee": "-600",
+  "withheld_tax": "-150"
+ },
+ "webhook_received.json": {
+  "shop_id": "7495000000000000001",
+  "type": 1,
+  "order_id": "577001234500000101",
+  "status": "AWAITING_SHIPMENT",
+  "updated_at": 1794963700,
+  "sent_at": 1794963700,
+  "notification_id": "7380000000000000101"
+ },
+ "webhook_received_cancellation.json": {
+  "type": 11,
+  "order_id": "577001234500000105",
+  "status": null,
+  "updated_at": null
+ },
+ "list_orders.json": {
+  "next": "",
+  "total": 2
+ },
+ "list_settlements.json": {
+  "next": ""
+ },
+ "get_settlement.json": {
+  "next": "",
+  "settlement": "26550"
+ },
+ "update_stock.json": {
+  "failures": null
+ },
+ "get_tracking.json": {
+  "tracking_number": "JX0000000102",
+  "package_status": "FULFILLING"
+ }
+}

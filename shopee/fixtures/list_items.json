@@ -1,0 +1,29 @@
+{
+  "error": "",
+  "message": "",
+  "warning": "",
+  "request_id": "00000000000000000000000000000007",
+  "response": {
+    "item": [
+      {
+        "item_id": 3001001,
+        "item_status": "NORMAL",
+        "update_time": 1794276000,
+        "tag": {
+          "kit": false
+        }
+      },
+      {
+        "item_id": 3001002,
+        "item_status": "NORMAL",
+        "update_time": 1794276300,
+        "tag": {
+          "kit": false
+        }
+      }
+    ],
+    "total_count": 2,
+    "has_next_page": false,
+    "next_offset": 2
+  }
+}

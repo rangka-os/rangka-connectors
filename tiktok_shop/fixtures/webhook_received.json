@@ -1,0 +1,12 @@
+{
+ "type": 1,
+ "tts_notification_id": "7380000000000000101",
+ "shop_id": "7495000000000000001",
+ "timestamp": 1794963700,
+ "data": {
+  "order_id": "577001234500000101",
+  "order_status": "AWAITING_SHIPMENT",
+  "is_on_hold_order": false,
+  "update_time": 1794963700
+ }
+}

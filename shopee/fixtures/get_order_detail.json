@@ -1,0 +1,396 @@
+{
+  "error": "",
+  "message": "",
+  "request_id": "00000000000000000000000000000002",
+  "response": {
+    "order_list": [
+      {
+        "order_sn": "261118TC00001A",
+        "region": "ID",
+        "currency": "IDR",
+        "cod": false,
+        "order_status": "READY_TO_SHIP",
+        "message_to_seller": "",
+        "create_time": 1794960600,
+        "update_time": 1794960780,
+        "days_to_ship": 2,
+        "ship_by_date": 1795133400,
+        "booking_sn": "",
+        "item_list": [
+          {
+            "item_id": 3001001,
+            "item_name": "Tahu goreng original",
+            "item_sku": "TH-ORI",
+            "model_id": 0,
+            "model_name": "",
+            "model_sku": "",
+            "model_quantity_purchased": 2,
+            "model_original_price": 15000,
+            "model_discounted_price": 15000,
+            "wholesale": false,
+            "weight": 0.25,
+            "add_on_deal": false,
+            "main_item": false,
+            "add_on_deal_id": 0,
+            "promotion_type": "",
+            "promotion_id": 0,
+            "order_item_id": 3001001,
+            "promotion_group_id": 0,
+            "line_item_id": 1
+          },
+          {
+            "item_id": 3001002,
+            "item_name": "Tahu goreng",
+            "item_sku": "TH",
+            "model_id": 4002001,
+            "model_name": "Pedas",
+            "model_sku": "TH-PDS",
+            "model_quantity_purchased": 1,
+            "model_original_price": 18000,
+            "model_discounted_price": 16000,
+            "wholesale": false,
+            "weight": 0.25,
+            "add_on_deal": false,
+            "main_item": false,
+            "add_on_deal_id": 0,
+            "promotion_type": "",
+            "promotion_id": 0,
+            "order_item_id": 3001002,
+            "promotion_group_id": 0,
+            "line_item_id": 2
+          }
+        ],
+        "pay_time": 1794960720,
+        "package_list": [
+          {
+            "package_number": "OFG261110000001",
+            "logistics_status": "LOGISTICS_READY",
+            "logistics_channel_id": 8003,
+            "shipping_carrier": "SPX Standard",
+            "allow_self_design_awb": false,
+            "group_shipment_id": null,
+            "parcel_chargeable_weight_gram": 500,
+            "item_list": [
+              {
+                "item_id": 3001001,
+                "model_id": 0,
+                "model_quantity": 2,
+                "order_item_id": 3001001,
+                "promotion_group_id": 0,
+                "product_location_id": "IDZ"
+              },
+              {
+                "item_id": 3001002,
+                "model_id": 4002001,
+                "model_quantity": 1,
+                "order_item_id": 3001002,
+                "promotion_group_id": 0,
+                "product_location_id": "IDZ"
+              }
+            ]
+          }
+        ],
+        "shipping_carrier": "SPX Standard",
+        "payment_method": "ShopeePay",
+        "cancel_by": "",
+        "cancel_reason": "",
+        "buyer_cancel_reason": "",
+        "pickup_done_time": 0,
+        "fulfillment_flag": "fulfilled_by_local_seller",
+        "total_amount": 56000
+      },
+      {
+        "order_sn": "261118TC00002B",
+        "region": "ID",
+        "currency": "IDR",
+        "cod": false,
+        "order_status": "UNPAID",
+        "message_to_seller": "",
+        "create_time": 1794962400,
+        "update_time": 1794962400,
+        "days_to_ship": 2,
+        "ship_by_date": 1795135200,
+        "booking_sn": "",
+        "item_list": [
+          {
+            "item_id": 3001001,
+            "item_name": "Tahu goreng original",
+            "item_sku": "TH-ORI",
+            "model_id": 0,
+            "model_name": "",
+            "model_sku": "",
+            "model_quantity_purchased": 1,
+            "model_original_price": 15000,
+            "model_discounted_price": 15000,
+            "wholesale": false,
+            "weight": 0.25,
+            "add_on_deal": false,
+            "main_item": false,
+            "add_on_deal_id": 0,
+            "promotion_type": "",
+            "promotion_id": 0,
+            "order_item_id": 3001001,
+            "promotion_group_id": 0,
+            "line_item_id": 1
+          }
+        ],
+        "pay_time": null,
+        "package_list": [
+          {
+            "package_number": "OFG261110000002",
+            "logistics_status": "LOGISTICS_NOT_START",
+            "logistics_channel_id": 8003,
+            "shipping_carrier": "SPX Standard",
+            "allow_self_design_awb": false,
+            "group_shipment_id": null,
+            "parcel_chargeable_weight_gram": 500,
+            "item_list": [
+              {
+                "item_id": 3001001,
+                "model_id": 0,
+                "model_quantity": 1,
+                "order_item_id": 3001001,
+                "promotion_group_id": 0,
+                "product_location_id": "IDZ"
+              }
+            ]
+          }
+        ],
+        "shipping_carrier": "SPX Standard",
+        "payment_method": "",
+        "cancel_by": "",
+        "cancel_reason": "",
+        "buyer_cancel_reason": "",
+        "pickup_done_time": 0,
+        "fulfillment_flag": "fulfilled_by_local_seller"
+      },
+      {
+        "order_sn": "261117TC00003C",
+        "region": "ID",
+        "currency": "IDR",
+        "cod": false,
+        "order_status": "IN_CANCEL",
+        "message_to_seller": "",
+        "create_time": 1794917100,
+        "update_time": 1794959400,
+        "days_to_ship": 2,
+        "ship_by_date": 1795089900,
+        "booking_sn": "",
+        "item_list": [
+          {
+            "item_id": 3001002,
+            "item_name": "Tahu goreng",
+            "item_sku": "TH",
+            "model_id": 4002001,
+            "model_name": "Pedas",
+            "model_sku": "TH-PDS",
+            "model_quantity_purchased": 2,
+            "model_original_price": 18000,
+            "model_discounted_price": 18000,
+            "wholesale": false,
+            "weight": 0.25,
+            "add_on_deal": false,
+            "main_item": false,
+            "add_on_deal_id": 0,
+            "promotion_type": "",
+            "promotion_id": 0,
+            "order_item_id": 3001002,
+            "promotion_group_id": 0,
+            "line_item_id": 1
+          }
+        ],
+        "pay_time": 1794917160,
+        "package_list": [
+          {
+            "package_number": "OFG261110000003",
+            "logistics_status": "LOGISTICS_READY",
+            "logistics_channel_id": 8003,
+            "shipping_carrier": "SPX Standard",
+            "allow_self_design_awb": false,
+            "group_shipment_id": null,
+            "parcel_chargeable_weight_gram": 500,
+            "item_list": [
+              {
+                "item_id": 3001002,
+                "model_id": 4002001,
+                "model_quantity": 2,
+                "order_item_id": 3001002,
+                "promotion_group_id": 0,
+                "product_location_id": "IDZ"
+              }
+            ]
+          }
+        ],
+        "shipping_carrier": "SPX Standard",
+        "payment_method": "ShopeePay",
+        "cancel_by": "",
+        "cancel_reason": "",
+        "buyer_cancel_reason": "",
+        "pickup_done_time": 0,
+        "fulfillment_flag": "fulfilled_by_local_seller",
+        "total_amount": 45000
+      },
+      {
+        "order_sn": "261117TC00004D",
+        "region": "ID",
+        "currency": "IDR",
+        "cod": false,
+        "order_status": "CANCELLED",
+        "message_to_seller": "",
+        "create_time": 1794920400,
+        "update_time": 1794961200,
+        "days_to_ship": 2,
+        "ship_by_date": 1795093200,
+        "booking_sn": "",
+        "item_list": [
+          {
+            "item_id": 3001001,
+            "item_name": "Tahu goreng original",
+            "item_sku": "TH-ORI",
+            "model_id": 0,
+            "model_name": "",
+            "model_sku": "",
+            "model_quantity_purchased": 4,
+            "model_original_price": 15000,
+            "model_discounted_price": 15000,
+            "wholesale": false,
+            "weight": 0.25,
+            "add_on_deal": false,
+            "main_item": false,
+            "add_on_deal_id": 0,
+            "promotion_type": "",
+            "promotion_id": 0,
+            "order_item_id": 3001001,
+            "promotion_group_id": 0,
+            "line_item_id": 1
+          }
+        ],
+        "pay_time": 1794920460,
+        "package_list": [
+          {
+            "package_number": "OFG261110000004",
+            "logistics_status": "LOGISTICS_REQUEST_CANCELED",
+            "logistics_channel_id": 8003,
+            "shipping_carrier": "SPX Standard",
+            "allow_self_design_awb": false,
+            "group_shipment_id": null,
+            "parcel_chargeable_weight_gram": 500,
+            "item_list": [
+              {
+                "item_id": 3001001,
+                "model_id": 0,
+                "model_quantity": 4,
+                "order_item_id": 3001001,
+                "promotion_group_id": 0,
+                "product_location_id": "IDZ"
+              }
+            ]
+          }
+        ],
+        "shipping_carrier": "SPX Standard",
+        "payment_method": "ShopeePay",
+        "cancel_by": "seller",
+        "cancel_reason": "OUT_OF_STOCK",
+        "buyer_cancel_reason": "",
+        "pickup_done_time": 0,
+        "fulfillment_flag": "fulfilled_by_local_seller",
+        "total_amount": 69000
+      },
+      {
+        "order_sn": "261116TC00005E",
+        "region": "ID",
+        "currency": "IDR",
+        "cod": false,
+        "order_status": "COMPLETED",
+        "message_to_seller": "",
+        "create_time": 1794790800,
+        "update_time": 1794964800,
+        "days_to_ship": 2,
+        "ship_by_date": 1794963600,
+        "booking_sn": "",
+        "item_list": [
+          {
+            "item_id": 3001001,
+            "item_name": "Tahu goreng original",
+            "item_sku": "TH-ORI",
+            "model_id": 0,
+            "model_name": "",
+            "model_sku": "",
+            "model_quantity_purchased": 3,
+            "model_original_price": 15000,
+            "model_discounted_price": 15000,
+            "wholesale": false,
+            "weight": 0.25,
+            "add_on_deal": false,
+            "main_item": false,
+            "add_on_deal_id": 0,
+            "promotion_type": "",
+            "promotion_id": 0,
+            "order_item_id": 3001001,
+            "promotion_group_id": 0,
+            "line_item_id": 1
+          },
+          {
+            "item_id": 3001002,
+            "item_name": "Tahu goreng",
+            "item_sku": "TH",
+            "model_id": 4002001,
+            "model_name": "Pedas",
+            "model_sku": "TH-PDS",
+            "model_quantity_purchased": 2,
+            "model_original_price": 18000,
+            "model_discounted_price": 17000,
+            "wholesale": false,
+            "weight": 0.25,
+            "add_on_deal": false,
+            "main_item": false,
+            "add_on_deal_id": 0,
+            "promotion_type": "",
+            "promotion_id": 0,
+            "order_item_id": 3001002,
+            "promotion_group_id": 0,
+            "line_item_id": 2
+          }
+        ],
+        "pay_time": 1794790920,
+        "package_list": [
+          {
+            "package_number": "OFG261110000005",
+            "logistics_status": "LOGISTICS_DELIVERY_DONE",
+            "logistics_channel_id": 8003,
+            "shipping_carrier": "SPX Standard",
+            "allow_self_design_awb": false,
+            "group_shipment_id": null,
+            "parcel_chargeable_weight_gram": 500,
+            "item_list": [
+              {
+                "item_id": 3001001,
+                "model_id": 0,
+                "model_quantity": 3,
+                "order_item_id": 3001001,
+                "promotion_group_id": 0,
+                "product_location_id": "IDZ"
+              },
+              {
+                "item_id": 3001002,
+                "model_id": 4002001,
+                "model_quantity": 2,
+                "order_item_id": 3001002,
+                "promotion_group_id": 0,
+                "product_location_id": "IDZ"
+              }
+            ]
+          }
+        ],
+        "shipping_carrier": "SPX Standard",
+        "payment_method": "ShopeePay",
+        "cancel_by": "",
+        "cancel_reason": "",
+        "buyer_cancel_reason": "",
+        "pickup_done_time": 1794812400,
+        "fulfillment_flag": "fulfilled_by_local_seller",
+        "total_amount": 89000
+      }
+    ]
+  }
+}

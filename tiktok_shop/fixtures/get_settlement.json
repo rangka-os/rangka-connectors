@@ -1,0 +1,83 @@
+{
+ "code": 0,
+ "message": "Success",
+ "request_id": "202611180100000101890810281E8C7001",
+ "data": {
+  "id": "7300000000000009001",
+  "create_time": 1794960000,
+  "status": "SETTLED",
+  "currency": "IDR",
+  "payable_amount": "26550",
+  "total_reserve_amount": "0",
+  "total_settlement_amount": "26550",
+  "total_settlement_breakdown": {
+   "total_revenue_amount": "30000",
+   "total_shipping_cost_amount": "0",
+   "total_fee_tax_amount": "-3450",
+   "total_adjustment_amount": "0"
+  },
+  "total_count": 1,
+  "next_page_token": "",
+  "transactions": [
+   {
+    "id": "7300000000000009201",
+    "type": "ORDER",
+    "order_id": "577001234500000106",
+    "order_create_time": 1794528000,
+    "adjustment_id": "",
+    "adjustment_order_id": "",
+    "adjustment_amount": "0",
+    "settlement_amount": "26550",
+    "revenue_amount": "30000",
+    "revenue_breakdown": {
+     "subtotal_before_discount_amount": "30000",
+     "seller_discount_amount": "0",
+     "refund_subtotal_before_discount_amount": "0",
+     "seller_discount_refund_amount": "0",
+     "cod_service_fee_amount": "0",
+     "refund_cod_service_fee_amount": "0",
+     "distant_item_fee_amount": "0"
+    },
+    "shipping_cost_amount": "0",
+    "shipping_cost_breakdown": {
+     "actual_shipping_fee_amount": "-10000",
+     "shipping_fee_discount_amount": "0",
+     "customer_paid_shipping_fee_amount": "10000",
+     "return_shipping_fee_amount": "0",
+     "replacement_shipping_fee_amount": "0",
+     "exchange_shipping_fee_amount": "0",
+     "shipping_insurance_fee_amount": "0",
+     "seller_self_shipping_service_fee_amount": "0",
+     "failed_delivery_subsidy_amount": "0",
+     "distant_shipping_fee_amount": "0"
+    },
+    "fee_tax_amount": "-3450",
+    "fee_tax_breakdown": {
+     "fee": {
+      "platform_commission_amount": "-1200",
+      "transaction_fee_amount": "-600",
+      "dynamic_commission_amount": "-300",
+      "sfp_service_fee_amount": "-1200",
+      "affiliate_commission_amount": "0",
+      "voucher_xtra_service_fee_amount": "0",
+      "mall_service_fee_amount": "0",
+      "credit_card_handling_fee_amount": "0"
+     },
+     "tax": {
+      "article_22_income_tax_withheld": "-150",
+      "vat_amount": "0",
+      "pit_amount": "0"
+     }
+    },
+    "supplementary_component": {
+     "customer_payment_amount": "40000",
+     "customer_refund_amount": "0",
+     "platform_discount_amount": "0",
+     "platform_discount_refund_amount": "0",
+     "seller_cofunded_discount_amount": "0",
+     "platform_cofunded_discount_amount": "0"
+    }
+   }
+  ]
+ }
+}

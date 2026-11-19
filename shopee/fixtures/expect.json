@@ -1,0 +1,119 @@
+{
+  "order_changed.json": {
+    "channel": "shopee",
+    "storefront": "SHOPEE",
+    "order_id": "261118TC00001A",
+    "status": "READY_TO_SHIP",
+    "sold": true,
+    "shipped": false,
+    "completed": false,
+    "cancelled": false,
+    "created_at": 1794960600,
+    "paid_at": 1794960720,
+    "updated_at": 1794960780,
+    "currency": "IDR",
+    "buyer_total": 56000
+  },
+  "order_changed_unpaid.json": {
+    "channel": "shopee",
+    "storefront": "SHOPEE",
+    "order_id": "261118TC00002B",
+    "status": "UNPAID",
+    "sold": false,
+    "shipped": false,
+    "completed": false,
+    "cancelled": false,
+    "created_at": 1794962400,
+    "paid_at": null,
+    "updated_at": 1794962400,
+    "currency": "IDR",
+    "buyer_total": null
+  },
+  "order_changed_in_cancel.json": {
+    "channel": "shopee",
+    "storefront": "SHOPEE",
+    "order_id": "261117TC00003C",
+    "status": "IN_CANCEL",
+    "sold": false,
+    "shipped": false,
+    "completed": false,
+    "cancelled": false,
+    "created_at": 1794917100,
+    "paid_at": 1794917160,
+    "updated_at": 1794959400,
+    "currency": "IDR",
+    "buyer_total": 45000
+  },
+  "order_changed_cancelled.json": {
+    "channel": "shopee",
+    "storefront": "SHOPEE",
+    "order_id": "261117TC00004D",
+    "status": "CANCELLED",
+    "sold": false,
+    "shipped": false,
+    "completed": false,
+    "cancelled": true,
+    "created_at": 1794920400,
+    "paid_at": 1794920460,
+    "updated_at": 1794961200,
+    "currency": "IDR",
+    "buyer_total": 69000
+  },
+  "order_changed_completed.json": {
+    "channel": "shopee",
+    "storefront": "SHOPEE",
+    "order_id": "261116TC00005E",
+    "status": "COMPLETED",
+    "sold": true,
+    "shipped": true,
+    "completed": true,
+    "cancelled": false,
+    "created_at": 1794790800,
+    "paid_at": 1794790920,
+    "updated_at": 1794964800,
+    "currency": "IDR",
+    "buyer_total": 89000
+  },
+  "order_settled.json": {
+    "channel": "shopee",
+    "order_id": "261116TC00005E",
+    "currency": "IDR",
+    "settled_at": 1794965400,
+    "net": 64295,
+    "adjusted_net": 64295,
+    "commission_fee": 6320,
+    "service_fee": 3160,
+    "transaction_fee": 1580,
+    "withheld_tax": 395
+  },
+  "push_received.json": {
+    "shop_id": 880001,
+    "code": 3,
+    "order_id": "261118TC00001A",
+    "status": "READY_TO_SHIP",
+    "updated_at": 1794960780,
+    "sent_at": 1794960780
+  },
+  "push_received_tracking.json": {
+    "shop_id": 880001,
+    "code": 4,
+    "order_id": "261116TC00005E",
+    "status": null,
+    "updated_at": null,
+    "sent_at": 1794809400
+  },
+  "list_orders.json": {
+    "more": false,
+    "next": ""
+  },
+  "list_settlements.json": {
+    "more": false
+  },
+  "get_tracking.json": {
+    "tracking_number": "SPXID0261116005E"
+  },
+  "list_items.json": {
+    "more": false,
+    "total": 2
+  }
+}

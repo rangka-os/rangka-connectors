@@ -1,0 +1,17 @@
+{
+ "code": 0,
+ "message": "Success",
+ "request_id": "202611180100000101890810281E8C7001",
+ "data": {
+  "shops": [
+   {
+    "id": "7495000000000000001",
+    "name": "Tahu Contoh Official",
+    "region": "ID",
+    "seller_type": "LOCAL",
+    "cipher": "ROW_TahuContohDemoCipher0001",
+    "code": "IDLCCONTOH01"
+   }
+  ]
+ }
+}

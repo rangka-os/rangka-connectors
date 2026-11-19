@@ -1,0 +1,77 @@
+{
+ "code": 0,
+ "message": "Success",
+ "request_id": "202611180100000101890810281E8C7001",
+ "data": {
+  "total_count": 2,
+  "next_page_token": "",
+  "products": [
+   {
+    "id": "1729000000000000501",
+    "title": "Tahu goreng original",
+    "status": "ACTIVATE",
+    "create_time": 1792368000,
+    "update_time": 1794873600,
+    "skus": [
+     {
+      "id": "1729000000000005011",
+      "seller_sku": "TH-ORI",
+      "price": {
+       "currency": "IDR",
+       "tax_exclusive_price": "15000",
+       "sale_price": "15000"
+      },
+      "inventory": [
+       {
+        "warehouse_id": "7300000000000000001",
+        "quantity": 40
+       }
+      ]
+     }
+    ],
+    "integrated_platform_statuses": [
+     {
+      "platform": "TOKOPEDIA",
+      "status": "ACTIVATE"
+     }
+    ],
+    "audit": {
+     "status": "APPROVED"
+    }
+   },
+   {
+    "id": "1729000000000000502",
+    "title": "Tahu goreng pedas",
+    "status": "ACTIVATE",
+    "create_time": 1792368000,
+    "update_time": 1794873600,
+    "skus": [
+     {
+      "id": "1729000000000005021",
+      "seller_sku": "TH-PDS",
+      "price": {
+       "currency": "IDR",
+       "tax_exclusive_price": "18000",
+       "sale_price": "18000"
+      },
+      "inventory": [
+       {
+        "warehouse_id": "7300000000000000001",
+        "quantity": 25
+       }
+      ]
+     }
+    ],
+    "integrated_platform_statuses": [
+     {
+      "platform": "TOKOPEDIA",
+      "status": "ACTIVATE"
+     }
+    ],
+    "audit": {
+     "status": "APPROVED"
+    }
+   }
+  ]
+ }
+}

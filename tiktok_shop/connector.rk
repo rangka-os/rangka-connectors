@@ -1,0 +1,300 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/connector.json
+# TikTok Shop and Tokopedia (Indonesia) through the TikTok Shop Partner API: orders, settlements, stock, tracking.
+# One connector is both storefronts. Tokopedia's own Open API was shut down on 30 Sep 2025; Tokopedia orders now come
+# from the same TikTok Shop API, each order says where it was placed in commerce_platform (TIKTOK_SHOP, TOKOPEDIA,
+# TIKTOK_SHOP_APP), and both storefronts draw from one stock per SKU and warehouse (there is no per-storefront stock).
+# Shared mapping for every marketplace connector: marketplace/README.md (events, flags, lines, rules).
+# Status: spec, no account used. Paths and fields from the Partner Center API reference
+# (partner.tiktokshop.com/docv2) as read on 19 Nov 2026, each endpoint with its own version in the path; to confirm in
+# a Development Shop (free sandbox seller account in Partner Center, Indonesia local supported). Research notes:
+# Juragan's research_notes/Marketplace connector APIs Indonesia/tiktok_shop_tokopedia.md.
+# Signing: every call to open-api.tiktokglobalshop.com carries app_key, timestamp (Unix seconds, accepted from 5 minutes
+# before to 30 seconds after the platform's clock) and sign = lower-case hex HMAC-SHA256(app_secret, app_secret + path +
+# the sorted query as key+value without sign and access_token + the raw body + app_secret). The access token goes in
+# the x-tts-access-token header and is not signed. The token endpoints on auth.tiktok-shops.com are not signed.
+# Polling is the main path: a webhook only says that an order changed (and says CANCEL where the API says CANCELLED),
+# and TikTok Shop asks partners not to rely on webhooks alone, so every flag comes from the polled order.
+# experimental: says how the kernel must sign and refresh (Juragan proposals/marketplace-connector-runtime.md, parts A
+# and C). Until the kernel reads it, tiktok_shop/mock/tiktok_shop_mock.py poll is the relay that signs, refreshes,
+# pages and posts each event to the flows tiktok_shop_order_staged and tiktok_shop_order_settled.
+# One shop per company: the keys below are the keys of one shop (shop_cipher from list_shops).
+# No buyer data: the buyer's name, phone and address (recipient_address, buyer_nickname, buyer_email) are never
+# requested on purpose and never emitted; events carry the order, its lines and money only.
+name: tiktok_shop
+label: {id: TikTok Shop dan Tokopedia}
+summary:
+  id: Ambil pesanan dan pencairan dana TikTok Shop dan Tokopedia, kirim stok ke toko.
+  en: Pull TikTok Shop and Tokopedia orders and settlements, push stock to the shop.
+category: sales
+icon: shopping-bag-2-line
+version: 0.1.0
+vendor: TikTok Shop (TikTok dan Tokopedia)
+docs: https://partner.tiktokshop.com/docv2/page/tts-api-concepts-overview
+hosts: [open-api.tiktokglobalshop.com, auth.tiktok-shops.com]
+auth:
+  type: hmac
+  fields:
+    - name: app_key
+      label: {id: App key}
+      required: true
+      help: {id: 'Partner Center > App & Service > detail app'}
+    - name: app_secret
+      label: {id: App secret}
+      secret: true
+      required: true
+      help: {id: 'Partner Center > App & Service > detail app'}
+    - name: shop_cipher
+      label: {id: Shop cipher}
+      required: true
+      help: {id: 'Kode toko dari daftar toko yang memberi izin (list_shops)'}
+    - name: access_token
+      label: {id: Access token}
+      secret: true
+      required: true
+      help: {id: 'Diisi setelah pemilik toko memberi izin. Berlaku 7 hari, diperbarui otomatis'}
+    - name: refresh_token
+      label: {id: Refresh token}
+      secret: true
+# Not read by the kernel yet (Juragan proposals/marketplace-connector-runtime.md): until then
+# tiktok_shop/mock/tiktok_shop_mock.py poll signs and refreshes.
+experimental:
+  sign:
+    in: query
+    param: sign
+    alg: hmac-sha256
+    key: app_secret
+    encoding: hex
+    timestamp: {param: timestamp, unit: seconds}
+    # request.target is the path only; request.body is the raw body as sent (empty for a GET), left out for a
+    # multipart/form-data upload, which no action here sends
+    base: '{auth.app_secret}{request.target}{request.sorted_query}{request.body}{auth.app_secret}'
+    exclude: [sign, access_token]
+  refresh:
+    request:
+      method: GET
+      url: https://auth.tiktok-shops.com/api/v2/token/refresh
+      # these auth fields go into the query under their own names (the vendor takes the app secret there)
+      query_from_auth: [app_key, app_secret, refresh_token]
+      query: {grant_type: refresh_token}
+    # the token host takes no sign parameter (an addition to the proposal's vocabulary, which only knows public: true)
+    sign: false
+    # access_token_expire_in and refresh_token_expire_in are Unix seconds (not durations). The answer always carries a
+    # refresh_token: it is stored before the new access token is used, whether or not it changed
+    output: {access_token: data.access_token, refresh_token: data.refresh_token, expires_at: data.access_token_expire_in, refresh_expires_at: data.refresh_token_expire_in}
+    before: 1d
+    # 105002: access token expired; refresh, then send the call once more
+    on_error: [105002]
+triggers:
+  # A hint only. Registered per shop and topic (Partner Center or PUT /event/202309/webhooks), delivered at least
+  # once (dedupe on tts_notification_id), answered with an empty 200 within 3 seconds. Authorization is lower-case hex
+  # HMAC-SHA256(app_secret, app_key + raw body), no prefix. The kernel ignores payload today and computes the HMAC over
+  # the raw body only, so it refuses every push with 401: it fails closed until part B of the proposal lands.
+  # Type 1 (order status change) says CANCEL where the order API says CANCELLED and has no PARTIALLY_SHIPPING, which
+  # is why no flag is derived here: a flow listening to this only asks for the next poll.
+  - name: webhook_received
+    label: {id: Kabar dari TikTok Shop}
+    via: webhook
+    verify:
+      signature:
+        header: Authorization
+        alg: hmac-sha256
+        key: app_secret
+        encoding: hex
+        payload: '{auth.app_key}{request.body}'
+    emit:
+      shop_id: shop_id
+      # 1 order status change, 11 cancellation status change, 12 return status change, ...
+      type: type
+      order_id: data.order_id
+      # type 1 only (null for other types)
+      status: data.order_status
+      updated_at: data.update_time
+      sent_at: timestamp
+      notification_id: tts_notification_id
+  # Orders changed in the last two days (update_time from midnight UTC two days back), oldest change first, page by
+  # page over next_page_token (empty on the last page). The search answer is the full order object (the same schema
+  # as order detail 202507, commerce_platform, payment and line_items included), so no detail call per order is made;
+  # if the sandbox shows fields missing from search, this becomes each: over list_orders with get_order_detail.
+  # The same order is emitted again on later polls: the kernel drops an event only when every emitted value is
+  # unchanged, and the relay posts every event of the window on every poll, so every flow has the idempotency key of
+  # marketplace/README.md ("Flow keys"). After an outage longer than two days, run the relay once with
+  # poll --since-days N. lines are TikTok's line_items unchanged: there is no quantity field, each unit sold is its own
+  # entry. A COD order is AWAITING_SHIPMENT, so sold, with paid_time absent. Returns set no flag (not read in v0.1).
+  - name: order_changed
+    label: {id: Pesanan baru atau berubah}
+    via: poll
+    every: 10m
+    action: list_orders
+    input:
+      update_time_ge: "(days_between('1970-01-01', today()) - 2) * 86400"
+      page_token: page
+    next: next
+    for_each: orders[]
+    emit:
+      channel: "'tiktok_shop'"
+      storefront: item.commerce_platform
+      order_id: item.id
+      status: item.status
+      sold: "item.status == 'AWAITING_SHIPMENT' || item.status == 'PARTIALLY_SHIPPING' || item.status == 'AWAITING_COLLECTION' || item.status == 'IN_TRANSIT' || item.status == 'DELIVERED' || item.status == 'COMPLETED'"
+      shipped: "item.status == 'IN_TRANSIT' || item.status == 'DELIVERED' || item.status == 'COMPLETED'"
+      completed: "item.status == 'COMPLETED'"
+      cancelled: "item.status == 'CANCELLED'"
+      created_at: item.create_time
+      # absent until the order is paid
+      paid_at: item.paid_time
+      updated_at: item.update_time
+      currency: item.payment.currency
+      # money is a decimal string as TikTok sends it (whole rupiah for IDR)
+      buyer_total: item.payment.total_amount
+      lines: item.line_items
+  # Settlements: the paid daily statements of the last seven days (one statement per seller per day, generated at
+  # 00:00 UTC; Get Payments is closed to SEA, so payment_time of the statement is when the money was released), then
+  # the statement's transactions (202501; the 202309 paths were sunset on 31 Dec 2025), one record per order.
+  # A record of another type (RESERVE, an adjustment such as CHARGE_BACK) has an empty order_id and is not an order
+  # settlement: the settlement flow runs only if income.type == 'ORDER' (key channel:order_id:settled) and a person
+  # reviews the other records against the receivable. Fees and taxes keep TikTok's sign: negative is a cost, positive
+  # refunds it (never the absolute value); money is a decimal string, which a flow converts with double().
+  # service_fee is null: TikTok reports no single service fee but a dozen named program fees (sfp_service_fee_amount,
+  # voucher_xtra_service_fee_amount, mall_service_fee_amount, ...), which stay in income.fee_tax_breakdown.fee.
+  # adjusted_net is null: TikTok reports adjustments as their own records, not per order. After an outage longer than
+  # seven days, run the relay once with poll --settled-days N.
+  - name: order_settled
+    label: {id: Dana pesanan cair}
+    via: poll
+    every: 1h
+    action: get_settlement
+    each: {action: list_settlements, items: statements, as: statement, key: statement.id}
+    input:
+      statement_id: statement.id
+      page_token: page
+    next: next
+    for_each: transactions[]
+    emit:
+      channel: "'tiktok_shop'"
+      order_id: item.order_id
+      currency: statement.currency
+      settled_at: statement.payment_time
+      net: item.settlement_amount
+      adjusted_net: "null"
+      commission_fee: item.fee_tax_breakdown.fee.platform_commission_amount
+      service_fee: "null"
+      transaction_fee: item.fee_tax_breakdown.fee.transaction_fee_amount
+      # PPh 22 withheld under PMK 37/2025
+      withheld_tax: item.fee_tax_breakdown.tax.article_22_income_tax_withheld
+      income: item
+actions:
+  - name: list_orders
+    label: {id: Daftar pesanan}
+    request:
+      method: POST
+      url: https://open-api.tiktokglobalshop.com/order/202309/orders/search
+      headers: {x-tts-access-token: '{auth.access_token}', Content-Type: application/json}
+      query: {app_key: '{auth.app_key}', shop_cipher: '{auth.shop_cipher}', page_size: '50', page_token: '{input.page_token}', sort_field: update_time, sort_order: ASC}
+      body: {update_time_ge: '{input.update_time_ge}'}
+    input:
+      - {name: update_time_ge, type: int, default: "(days_between('1970-01-01', today()) - 2) * 86400", help: {id: 'Detik epoch (UTC)'}}
+      - {name: page_token, type: data, help: {id: 'Kosong untuk halaman pertama'}}
+    output: {orders: data.orders, next: data.next_page_token, total: data.total_count}
+    retry: {max: 5, backoff: exponential, on: [429, 500, 502, 503]}
+  - name: get_order_detail
+    label: {id: Rincian pesanan}
+    request:
+      method: GET
+      url: https://open-api.tiktokglobalshop.com/order/202507/orders
+      headers: {x-tts-access-token: '{auth.access_token}'}
+      query: {app_key: '{auth.app_key}', shop_cipher: '{auth.shop_cipher}', ids: '{input.ids}'}
+    input:
+      - {name: ids, type: data, required: true, help: {id: 'Nomor pesanan, dipisah koma (maks 50)'}}
+    output: {orders: data.orders}
+    retry: {max: 5, backoff: exponential, on: [429, 500, 502, 503]}
+  - name: list_settlements
+    label: {id: Daftar pencairan dana}
+    request:
+      method: GET
+      url: https://open-api.tiktokglobalshop.com/finance/202309/statements
+      headers: {x-tts-access-token: '{auth.access_token}'}
+      query: {app_key: '{auth.app_key}', shop_cipher: '{auth.shop_cipher}', sort_field: statement_time, statement_time_ge: '{input.statement_time_ge}', payment_status: PAID, page_size: '100'}
+    input:
+      - {name: statement_time_ge, type: int, default: "(days_between('1970-01-01', today()) - 7) * 86400", help: {id: 'Detik epoch (UTC)'}}
+    output: {statements: data.statements, next: data.next_page_token}
+    retry: {max: 5, backoff: exponential, on: [429, 500, 502, 503]}
+  - name: get_settlement
+    label: {id: Rincian pencairan per pesanan}
+    request:
+      method: GET
+      url: https://open-api.tiktokglobalshop.com/finance/202501/statements/{input.statement_id}/statement_transactions
+      headers: {x-tts-access-token: '{auth.access_token}'}
+      query: {app_key: '{auth.app_key}', shop_cipher: '{auth.shop_cipher}', sort_field: order_create_time, page_size: '100', page_token: '{input.page_token}'}
+    input:
+      - {name: statement_id, type: data, required: true}
+      - {name: page_token, type: data}
+    output: {transactions: data.transactions, next: data.next_page_token, settlement: data.total_settlement_amount}
+    retry: {max: 5, backoff: exponential, on: [429, 500, 502, 503]}
+  # Absolute quantity per SKU and warehouse (the legacy mode: sku_warehouse_stock_update_mode, new in Oct 2026, is not
+  # sent). One number serves both storefronts. The quantity is the available stock of marketplace/README.md rule 1,
+  # pushed only right after a successful order poll that staged every new order. revision (required, unique per push
+  # and increasing: the push time in milliseconds) is in the idempotency key, so every new push is sent while a retry
+  # of the same job is sent once; retries are short, a failed push waits for the next poll. A partial failure answers code 0 with data.errors (output failures): a flow treats a
+  # non-empty failures as a failed push and tells the owner. An empty warehouse_id is read as the shop's default
+  # warehouse; to confirm in the Development Shop.
+  - name: update_stock
+    label: {id: Kirim stok}
+    request:
+      method: POST
+      url: https://open-api.tiktokglobalshop.com/product/202309/products/{input.product_id}/inventory/update
+      headers: {x-tts-access-token: '{auth.access_token}', Content-Type: application/json}
+      query: {app_key: '{auth.app_key}', shop_cipher: '{auth.shop_cipher}'}
+      body:
+        skus:
+          - id: '{input.sku_id}'
+            inventory:
+              - {warehouse_id: '{input.warehouse_id}', quantity: '{input.quantity}'}
+    input:
+      - {name: product_id, type: data, required: true}
+      - {name: sku_id, type: data, required: true}
+      - {name: quantity, type: int, required: true, help: {id: 'Stok tersedia, angka utuh (bukan selisih)'}}
+      - {name: warehouse_id, type: data, default: "''", help: {id: 'Kosongkan untuk gudang utama toko'}}
+      - {name: revision, type: data, required: true, help: {id: 'Unik untuk setiap kiriman dan terus naik, misalnya waktu kirim dalam milidetik'}}
+    output: {failures: data.errors}
+    retry: {max: 2, backoff: fixed, on: [429, 500, 502, 503]}
+    idempotency: input.product_id + ':' + input.sku_id + ':' + input.warehouse_id + ':' + string(input.quantity) + ':' + string(input.revision)
+  # The tracking number of a package (packages[].id or line_items[].package_id of the order).
+  - name: get_tracking
+    label: {id: Nomor resi}
+    request:
+      method: GET
+      url: https://open-api.tiktokglobalshop.com/fulfillment/202309/packages/{input.package_id}
+      headers: {x-tts-access-token: '{auth.access_token}'}
+      query: {app_key: '{auth.app_key}', shop_cipher: '{auth.shop_cipher}'}
+    input:
+      - {name: package_id, type: data, required: true}
+    output: {tracking_number: data.tracking_number, shipping_provider: data.shipping_provider_name, package_status: data.package_status, orders: data.orders}
+    retry: {max: 3, backoff: exponential, on: [429, 500, 502, 503]}
+  # To find product_id and sku_id of a seller SKU (the join key with the item's sku in Rangka).
+  - name: list_products
+    label: {id: Daftar produk}
+    request:
+      method: POST
+      url: https://open-api.tiktokglobalshop.com/product/202502/products/search
+      headers: {x-tts-access-token: '{auth.access_token}', Content-Type: application/json}
+      query: {app_key: '{auth.app_key}', shop_cipher: '{auth.shop_cipher}', page_size: '100', page_token: '{input.page_token}'}
+      body: {status: '{input.status}', seller_skus: '{input.seller_skus}'}
+    input:
+      - {name: seller_skus, type: json, default: '[]', help: {id: 'SKU penjual yang dicari; kosong untuk semua'}}
+      - {name: status, type: data, default: "'ACTIVATE'"}
+      - {name: page_token, type: data}
+    output: {products: data.products, next: data.next_page_token, total: data.total_count}
+    retry: {max: 5, backoff: exponential, on: [429, 500, 502, 503]}
+  # The shops that authorized the app, with the cipher each shop-scoped call needs (no shop_cipher on this call).
+  - name: list_shops
+    label: {id: Daftar toko}
+    request:
+      method: GET
+      url: https://open-api.tiktokglobalshop.com/authorization/202309/shops
+      headers: {x-tts-access-token: '{auth.access_token}'}
+      query: {app_key: '{auth.app_key}'}
+    output: {shops: data.shops}
+    retry: {max: 3, backoff: exponential, on: [429, 500, 502, 503]}
+limits:
+  rate: dynamic per app and shop (HTTP 429, code 36009002); Development Shop 1000 requests per hour
+  note: {id: 'Perlu app di TikTok Shop Partner Center: seller developer untuk toko sendiri (satu toko), atau ISV. Toko uji (Development Shop) gratis'}
