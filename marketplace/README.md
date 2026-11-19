@@ -76,9 +76,9 @@ Emitted once the marketplace released the money of an order.
 | `channel`, `order_id`, `currency` | As above |
 | `settled_at` | Unix seconds: when the money was released |
 | `net` | What the seller receives for the order |
-| `commission_fee`, `service_fee`, `transaction_fee` | The three fee lines every marketplace has, positive numbers |
-| `withheld_tax` | Tax the marketplace withheld from the seller (null when the vendor does not report it per order) |
-| `income` | The vendor's own breakdown, unchanged: other fee lines, vouchers and shipping are read from it by the flow |
+| `commission_fee`, `service_fee`, `transaction_fee` | The named fee lines, with the vendor's own sign: Shopee reports a fee as a positive number, TikTok Shop as a negative one, so a flow books the absolute value. null when the vendor has no such single line (TikTok Shop has no single service fee; its program fees stay in `income`) |
+| `withheld_tax` | Tax the marketplace withheld from the seller, with the vendor's sign (null when the vendor does not report it per order) |
+| `income` | The vendor's own record, unchanged: other fee lines, vouchers and shipping are read from it by the flow. For `tiktok_shop` every statement transaction is emitted; only records whose `income.type` is `ORDER` are an order's settlement |
 
 The vendor's breakdown is kept whole because marketplaces add fee lines often (Shopee added three between July and
 November 2026). A flow books the three named fees and treats the rest of the gap between the sale and `net` as
@@ -107,6 +107,13 @@ A staging flow reads these fields from `lines`; nothing else differs between mar
 | `get_tracking` | The tracking number of a shipped order |
 
 Arranging a shipment (pickup, drop-off, labels) stays in the seller centre in this version.
+
+## Known limits of the kernel today
+
+- `each:` calls its list action once, without input, so a kernel poll reads only the first page of orders or
+  settlements changed in the window (100). The relay follows every page.
+- A webhook trigger is a hint only: Shopee's push and TikTok Shop's webhook carry a status but no lines, and TikTok's
+  order webhook says `CANCEL` where its API says `CANCELLED`. Flags come only from the polled order.
 
 ## Until the kernel signs these requests
 
