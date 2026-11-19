@@ -1,0 +1,20 @@
+{
+ "status_code": "201",
+ "status_message": "Success, Bank Transfer transaction is created",
+ "transaction_id": "be03df7d-2f97-4c8c-a53c-000000000008",
+ "order_id": "INV-2026-00008",
+ "merchant_id": "G000000001",
+ "gross_amount": "400000.00",
+ "currency": "IDR",
+ "payment_type": "bank_transfer",
+ "transaction_time": "2026-11-19 10:20:00",
+ "transaction_status": "pending",
+ "fraud_status": "accept",
+ "va_numbers": [
+  {
+   "bank": "bca",
+   "va_number": "812785002530231"
+  }
+ ],
+ "expiry_time": "2026-11-20 10:20:00"
+}

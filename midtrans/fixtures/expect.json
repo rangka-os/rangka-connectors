@@ -1,0 +1,88 @@
+{
+  "payment_notified.json": {
+    "gateway_ref": "INV-2026-00007",
+    "external_id": "INV-2026-00007",
+    "paid_amount": "750000.00",
+    "status": "settlement",
+    "status_code": "200",
+    "paid": true,
+    "refunded": false,
+    "channel": "qris",
+    "refund_amount": null
+  },
+  "payment_notified_pending.json": {
+    "external_id": "INV-2026-00008",
+    "paid": false,
+    "refunded": false,
+    "channel": "bank_transfer"
+  },
+  "payment_notified_va.json": {
+    "gateway_ref": "INV-2026-00008~2",
+    "external_id": "INV-2026-00008",
+    "paid_amount": "400000.00",
+    "paid": true,
+    "channel": "bank_transfer"
+  },
+  "payment_notified_expire.json": {
+    "status": "expire",
+    "status_code": "407",
+    "paid": false,
+    "refunded": false
+  },
+  "payment_notified_refund.json": {
+    "gateway_ref": "INV-2026-00007",
+    "paid": false,
+    "refunded": true,
+    "refund_amount": "750000.00"
+  },
+  "payment_notified_partial_refund.json": {
+    "paid": false,
+    "refunded": true,
+    "refund_amount": "250000.00",
+    "paid_amount": "750000.00"
+  },
+  "payment_notified_challenge.json": {
+    "status": "capture",
+    "paid": false
+  },
+  "create_snap.json": {
+    "payment_url": "https://app.sandbox.midtrans.com/snap/v3/redirection/tok-contoh-0007",
+    "token_id": "tok-contoh-0007"
+  },
+  "charge_qris.json": {
+    "gateway_ref": "INV-2026-00007",
+    "status": "pending",
+    "status_code": "201",
+    "qr_url": "https://api.sandbox.midtrans.com/v2/qris/0d8178e1-c6c7-4ab4-81a6-000000000007/qr-code",
+    "expires_at": "2026-11-19 10:27:00"
+  },
+  "charge_va.json": {
+    "gateway_ref": "INV-2026-00008",
+    "account_number": "812785002530231",
+    "bank_code": "bca",
+    "expires_at": "2026-11-20 10:20:00"
+  },
+  "charge_gopay.json": {
+    "gateway_ref": "INV-2026-00011",
+    "deeplink_url": "https://simulator.sandbox.midtrans.com/gopay/partner/app/payment-pin?id=contoh-0011"
+  },
+  "get_status.json": {
+    "gateway_ref": "INV-2026-00007",
+    "status": "settlement",
+    "status_code": "200",
+    "paid": true,
+    "paid_amount": "750000.00",
+    "channel": "qris",
+    "refund_amount": null
+  },
+  "payment_notified_relabelled.json": {
+    "gateway_ref": "INV-2026-00012",
+    "status": "cancel",
+    "paid": false,
+    "refunded": false
+  },
+  "payment_notified_other_amount.json": {
+    "paid": false,
+    "paid_amount": "750000.00"
+  }
+}

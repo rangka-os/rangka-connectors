@@ -6,10 +6,12 @@
 Needs PyYAML (pip install pyyaml), as the rangka-os validator does.
 
 For a connector with a fixtures/ folder:
+- a trigger with confirm: has `confirmed` in each fixture, holding exactly the confirm action's outputs;
 - every trigger has at least one fixture (<trigger>.json or <trigger>_<case>.json), every action with an output one
   (<action>.json, the answer of the API);
 - every emit / output that is a field path resolves in each of its fixtures (null is allowed: the field is there);
-- an emit that is an expression (==, ||, &&, string literals) is evaluated on the fixture;
+- an emit that is an expression (comparisons, ||, &&, a ? b : c, text methods, list indexes) is evaluated on the
+  fixture;
 - fixtures/expect.json pins values per fixture ({"<file>": {"<emit>": value}}); a field pinned to null may be absent;
 - every {input.x}, {auth.x} and settings.x the spec reads is declared (in requests and in a mail connector's mail:);
 - a mail: fetch answer (rangka-os contract 0068) has messages and a cursor, each message every field its trigger emits.
@@ -37,38 +39,163 @@ def resolve(doc, path):
     return cur
 
 
+TOKEN = re.compile(r"\s*(?:(?P<str>'[^']*')|(?P<num>\d+(?:\.\d+)?)|(?P<op>==|!=|>=|<=|\|\||&&|[!?:()\[\],.<>+])|(?P<id>[A-Za-z_][A-Za-z0-9_]*))")
+
+
 def evaluate(expr, doc):
-    """A small CEL subset: paths, 'strings', true/false/null, ==, !=, !, ||, &&, 'key' in path, parentheses.
+    """A CEL subset, enough for emit and output: field paths (body and response are the payload itself), 'strings',
+    numbers, true/false/null, == != > < >= <=, !, || and && (short-circuit), a ? b : c, 'key' in path, x in [list],
+    list[i], size(x), + on texts, and the text methods endsWith, startsWith, contains and replace.
 
-    A path that is not in the fixture fails only if it is evaluated (|| and && short-circuit, as in CEL)."""
-    tokens = re.findall(r"'[^']*'|==|!=|!|\|\||&&|\(|\)|[a-z_][a-z0-9_.]*", expr)
-    if "".join(tokens).replace(" ", "") != expr.replace(" ", ""):
-        raise ValueError(f"outside the checked subset: {expr}")
-    out = []
-    for t in tokens:
-        if t.startswith("'"):
-            out.append(repr(t[1:-1]))
-        elif t in ("==", "!=", "(", ")"):
-            out.append(t)
-        elif t == "!":
-            out.append(" not ")
-        elif t == "in":
-            out.append(" in ")
-        elif t == "||":
-            out.append(" or ")
-        elif t == "&&":
-            out.append(" and ")
-        elif t in ("true", "false"):
-            out.append(t.capitalize())
-        elif t == "null":
-            out.append("None")
+    A path that is not in the fixture fails only if it is evaluated, as in CEL."""
+    toks, pos = [], 0
+    while pos < len(expr):
+        m = TOKEN.match(expr, pos)
+        if not m or m.end() == pos:
+            if expr[pos:].strip() == "":
+                break
+            raise ValueError(f"outside the checked subset: {expr}")
+        pos = m.end()
+        toks.append((m.lastgroup, m.group(m.lastgroup)))
+    toks.append(("end", ""))
+    i = 0
+
+    def peek():
+        return toks[i][1] if toks[i][0] in ("op", "id") else None
+
+    def take(want=None):
+        nonlocal i
+        kind, val = toks[i]
+        if want is not None and (kind not in ("op", "id") or val != want):
+            raise ValueError(f"outside the checked subset: {expr}")
+        i += 1
+        return kind, val
+
+    # every node is a thunk, so that only the evaluated branch reads the fixture
+    def ternary():
+        c = or_()
+        if peek() == "?":
+            take()
+            a = ternary()
+            take(":")
+            b = ternary()
+            return lambda: a() if c() else b()
+        return c
+
+    def or_():
+        left = and_()
+        while peek() == "||":
+            take()
+            l, r = left, and_()
+            left = (lambda l, r: lambda: bool(l()) or bool(r()))(l, r)
+        return left
+
+    def and_():
+        left = not_()
+        while peek() == "&&":
+            take()
+            l, r = left, not_()
+            left = (lambda l, r: lambda: bool(l()) and bool(r()))(l, r)
+        return left
+
+    def not_():
+        if peek() == "!":
+            take()
+            x = not_()
+            return lambda: not x()
+        return cmp_()
+
+    def cmp_():
+        left = add()
+        op = peek()
+        if op in ("==", "!=", ">", "<", ">=", "<=", "in"):
+            take()
+            right = add()
+            return {"==": lambda: left() == right(), "!=": lambda: left() != right(), ">": lambda: left() > right(),
+                    "<": lambda: left() < right(), ">=": lambda: left() >= right(), "<=": lambda: left() <= right(),
+                    "in": lambda: left() in right()}[op]
+        return left
+
+    def add():
+        left = postfix()
+        while peek() == "+":
+            take()
+            l, r = left, postfix()
+            left = (lambda l, r: lambda: l() + r())(l, r)
+        return left
+
+    def args():
+        out = []
+        take("(")
+        while peek() != ")":
+            out.append(ternary())
+            if peek() == ",":
+                take()
+        take(")")
+        return out
+
+    def postfix():
+        kind, val = take()
+        if kind == "str":
+            node = (lambda v: lambda: v)(val[1:-1])
+        elif kind == "num":
+            node = (lambda v: lambda: v)(float(val) if "." in val else int(val))
+        elif kind == "op" and val == "(":
+            node = ternary()
+            take(")")
+        elif kind == "op" and val == "[":
+            items = []
+            while peek() != "]":
+                items.append(ternary())
+                if peek() == ",":
+                    take()
+            take("]")
+            node = lambda: [x() for x in items]
+        elif kind == "id" and val in ("true", "false", "null"):
+            node = (lambda v: lambda: v)({"true": True, "false": False, "null": None}[val])
+        elif kind == "id" and val == "size" and peek() == "(":
+            a = args()
+            node = lambda: len(a[0]())
+        elif kind == "id":
+            def root(name=val):
+                if name in ("body", "response"):
+                    return doc
+                if name not in doc:
+                    raise KeyError(name)
+                return doc[name]
+            node = root
         else:
-            v = resolve(doc, t)
-            out.append(f"_missing({t!r})" if v is MISSING else repr(v))
+            raise ValueError(f"outside the checked subset: {expr}")
+        while True:
+            if peek() == ".":
+                take()
+                _, name = take()
+                if peek() == "(":
+                    a, recv = args(), node
+                    if name not in ("endsWith", "startsWith", "contains", "replace"):
+                        raise ValueError(f"outside the checked subset: {expr}")
+                    node = (lambda recv, name, a: lambda: {
+                        "endsWith": lambda s: s.endswith(a[0]()), "startsWith": lambda s: s.startswith(a[0]()),
+                        "contains": lambda s: a[0]() in s, "replace": lambda s: s.replace(a[0](), a[1]())}[name](recv()))(recv, name, a)
+                else:
+                    def field(recv=node, name=name):
+                        v = recv()
+                        if not isinstance(v, dict) or name not in v:
+                            raise KeyError(name)
+                        return v[name]
+                    node = field
+            elif peek() == "[":
+                take()
+                idx, recv = ternary(), node
+                take("]")
+                node = (lambda recv, idx: lambda: recv()[idx()])(recv, idx)
+            else:
+                return node
 
-    def _missing(path):
-        raise KeyError(path)
-    return eval(" ".join(out), {"__builtins__": {}, "_missing": _missing})  # noqa: S307 - only the literals built above
+    tree = ternary()
+    if toks[i][0] != "end":
+        raise ValueError(f"outside the checked subset: {expr}")
+    return tree()
 
 
 def check(name):
@@ -108,8 +235,22 @@ def check(name):
                 elif got[key] != want:
                     errs.append(f"{base}: {key} = {got[key]!r}, want {want!r}")
 
+    outputs = {a["name"]: set((a.get("output") or {}).keys()) for a in spec.get("actions", [])}
     for t in spec.get("triggers", []):
         files = sorted(glob.glob(os.path.join(fx, t["name"] + ".json")) + glob.glob(os.path.join(fx, t["name"] + "_*.json")))
+        # a trigger with confirm: (rangka-os contract 0002): its fixture is the body plus `confirmed`, the confirm
+        # action's mapped output as the kernel hands it to emit; it holds that action's outputs, no other key
+        cf = (t.get("confirm") or {}).get("action")
+        if cf:
+            if cf not in outputs:
+                errs.append(f"trigger {t['name']}: confirm action {cf} is not declared")
+            for f in files:
+                n += 1
+                got = json.load(open(f)).get("confirmed")
+                if not isinstance(got, dict):
+                    errs.append(f"{os.path.basename(f)}: a confirmed trigger's fixture needs `confirmed` ({cf}'s output)")
+                elif set(got) != outputs.get(cf, set()):
+                    errs.append(f"{os.path.basename(f)}: confirmed keys {sorted(got)} are not {cf}'s outputs {sorted(outputs.get(cf, set()))}")
         mapping("trigger", t["name"], t.get("emit", {}), files)
     for a in spec.get("actions", []):
         inputs = {i["name"] for i in a.get("input", [])}

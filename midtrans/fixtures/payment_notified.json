@@ -1,0 +1,28 @@
+{
+ "transaction_time": "2026-11-19 10:12:40",
+ "transaction_status": "settlement",
+ "transaction_id": "9f1c7a52-3b8e-4d61-a2f4-000000000007",
+ "status_message": "midtrans payment notification",
+ "status_code": "200",
+ "signature_key": "(hex SHA-512, see signature_vector.txt)",
+ "payment_type": "qris",
+ "order_id": "INV-2026-00007",
+ "merchant_id": "G000000001",
+ "gross_amount": "750000.00",
+ "fraud_status": "accept",
+ "currency": "IDR",
+ "transaction_type": "on-us",
+ "settlement_time": "2026-11-19 10:13:05",
+ "issuer": "gopay",
+ "acquirer": "gopay",
+ "confirmed": {
+  "gateway_ref": "INV-2026-00007",
+  "status": "settlement",
+  "status_code": "200",
+  "paid": true,
+  "paid_amount": "750000.00",
+  "channel": "qris",
+  "transaction_id": "9f1c7a52-3b8e-4d61-a2f4-000000000007",
+  "refund_amount": null
+ }
+}

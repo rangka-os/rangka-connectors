@@ -1,0 +1,23 @@
+{
+ "status_code": "201",
+ "status_message": "QRIS transaction is created",
+ "transaction_id": "0d8178e1-c6c7-4ab4-81a6-000000000007",
+ "order_id": "INV-2026-00007",
+ "merchant_id": "G000000001",
+ "gross_amount": "750000.00",
+ "currency": "IDR",
+ "payment_type": "qris",
+ "transaction_time": "2026-11-19 10:12:00",
+ "transaction_status": "pending",
+ "fraud_status": "accept",
+ "acquirer": "gopay",
+ "actions": [
+  {
+   "name": "generate-qr-code",
+   "method": "GET",
+   "url": "https://api.sandbox.midtrans.com/v2/qris/0d8178e1-c6c7-4ab4-81a6-000000000007/qr-code"
+  }
+ ],
+ "qr_string": "00020101021226620014COM.GO-JEK.WWW011993600914300000000070210G0000000010303UKE51440014ID.CO.QRIS.WWW0215ID10200000000070303UKE5204581253033605405750005802ID5913Tahu Contoh6007BANDUNG61054011162070703A016304ABCD",
+ "expiry_time": "2026-11-19 10:27:00"
+}

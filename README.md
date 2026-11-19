@@ -20,6 +20,7 @@ Part of the Rangka family: [rangka-os](https://github.com/rangka-os/rangka-os) ย
 | [`rangka_whatsapp`](rangka_whatsapp/connector.rk) | WhatsApp from Rangka Cloud: a host connector (contract 0063 ยง2, `provided_by: host`), one number per business under Rangka's Meta setup, sends through Rangka Cloud's relay | `message_status`, `message_received`, `opted_out` (webhook from the host, `X-Rangka-Signature` checked with the business's own key) | `send_template` (idempotent on the document key; retried only on 429 and 5xx), `set_opt_out` | Spec (no Meta account yet; `hosts:` is a `.example` placeholder; local mock `rangka_whatsapp/mock/rangka_whatsapp_mock.py`, checked by `tests/check_rangka_whatsapp_mock.py` against the manifest; refusal codes and templates in [README](rangka_whatsapp/README.md)) |
 | [`xendit`](xendit/connector.rk) | Xendit (VA, QRIS, payment links; xenPlatform sub-accounts) | `va_paid`, `qr_paid`, `invoice_paid` (webhook, `x-callback-token` checked; every callback, `paid` marks a completed payment) | `create_fixed_va`, `create_qr_code`, `create_invoice`, `get_invoice` (with retries, idempotent on the invoice number and amount) | Spec (local test-mode mock `xendit/mock/xendit_mock.py`: fixed VA and dynamic QRIS, simulated payments send the callbacks with `x-callback-token`, redelivery for idempotency tests; dummy keys only, from `XENDIT_MOCK_SECRET_KEY` and `XENDIT_MOCK_CALLBACK_TOKEN`; checked by `tests/check_xendit_mock.py`; no account used) |
 | [`doku`](doku/connector.rk) | DOKU Checkout, Non-SNAP (QRIS and payment links) | `payment_notified` (webhook, DOKU's HMACSHA256 signature over Client-Id, Request-Id, Request-Timestamp, Request-Target and Digest checked by the kernel; `paid` only for status SUCCESS of a SALE, or of a notification without a type; a REFUND is never paid) | `create_checkout` (signed with `auth.sign`, idempotent on invoice, amount and `attempt`: a new page after the old one expired is the next attempt) | Spec (needs rangka-os `auth.sign` / `verify.signature.lines`, contract 0002 refinement 11 Nov 2026; synthetic fixtures in `doku/fixtures`; local mock `doku/mock/doku_mock.py` (dummy keys only, from `DOKU_MOCK_SECRET_KEY`: it signs whatever it is asked), checked by `tests/check_doku_mock.py`; no account used) |
+| [`midtrans`](midtrans/connector.rk) | Midtrans: Snap payment page and Core API (QRIS, bank transfer virtual accounts, GoPay) | `payment_notified` (webhook, the body's `signature_key` = SHA-512 of order id, status code, gross amount and server key checked by the kernel, then confirmed with Midtrans (`confirm: get_status`) before any flow runs, because the status is not signed; every status change; `paid` only when Midtrans reports settlement, or capture with fraud status accept, for that order id and amount; `refunded` for a refund or partial refund, never money in) | `create_snap`, `charge_qris`, `charge_va`, `charge_gopay` (idempotent on invoice, amount and `attempt`; one order id per attempt: `<invoice>~<attempt>` from the second), `get_status` | Spec (needs rangka-os body-field signatures and confirmed webhooks, contract 0002 refinements 19 Nov 2026; synthetic fixtures in `midtrans/fixtures`; local mock `midtrans/mock/midtrans_mock.py` (dummy keys only, from `MIDTRANS_MOCK_SERVER_KEY`), checked by `tests/check_midtrans_mock.py`; no account used) |
 | [`loyverse`](loyverse/connector.rk) | Loyverse POS API v1.0 (personal access token) | `receipt_updated`, `inventory_level_updated` (webhooks) | `list_receipts`, `list_stores`, `list_items`, `create_webhook` | Spec (fields from the public API reference, not checked against a live account) |
 | [`moka`](moka/connector.rk) | Moka POS Connect API (OAuth 2.0) | `transaction_created` (poll every 5 min of the transactions Moka received in the last two days, newest first, every page through `next_url`, so late refunds and offline syncs come in again; an outlet moves from the export file to the API from its `moka_api_from` day in rangka-apps) | `latest_transactions`, `list_outlets`, `list_items` | Spec (paths to confirm once Moka approves API access; synthetic fixtures for two outlets, a refund at sale time, a refund made the next day and the per-outlet `each:` item in `moka/fixtures`) |
 | [`biteship`](biteship/connector.rk) | Biteship shipping aggregator (JNE, J&T, SiCepat, AnterAja, GoSend, Grab and more) | `order_status`, `order_price`, `order_waybill` (webhooks, `x-biteship-secret` header checked; `delivered`/`failed`/`on_the_way` derived from the status) | `search_areas`, `get_rates`, `create_order` (idempotent on the reference), `get_order`, `cancel_order`, `get_tracking` | Spec (public API reference; synthetic fixtures in `biteship/fixtures`, checked by `tests/check_fixtures.py`; no account used) |
@@ -37,6 +38,12 @@ arrives as a signed notification of type REFUND (never money in).
 `python3 tests/check_rangka_whatsapp_mock.py` (PyYAML) checks the `rangka_whatsapp` mock against `connector.rk`: requests built from the manifest, a key sent once, opt-out, stop, pause, unapproved template, cap, the retried codes, and signed events carrying every emitted field.
 `python3 tests/check_xendit_mock.py` (stdlib) checks the Xendit mock: Basic auth, one VA per invoice, a closed or single-use VA
 and a dynamic QR paid once, and callbacks that carry the token and every field the connector's triggers emit from.
+`python3 tests/check_midtrans_mock.py` (stdlib) checks the Midtrans mock: its `signature_key` equals the vector the kernel is
+tested with (`midtrans/fixtures/signature_vector.txt`), Snap and the Core API answer in Midtrans's shape with every field
+the connector's outputs read, one transaction per order id, and simulated payments, expiries and refunds arrive as
+notifications the receiver verifies from the body alone. Only the order id, the status code and the gross amount are
+signed, so the connector keys on the order id and reads paid, the status and refunds from Midtrans's own answer
+(`confirmed`); the trigger fixtures carry that answer next to the body.
 `moka/mock/moka_mock.py` stands in for the Moka API (outlets and latest transactions from fixtures, Bearer token, the
 `since` window, `next_url` pages, `--day` to move a fixture to any date) and its `poll` command reads it the way the
 kernel's poll trigger does and hands each event, in the trigger's emit shape, to the tenant's flow
@@ -45,12 +52,17 @@ kernel's poll trigger does and hands each event, in the trigger's emit shape, to
 `python3 tests/check_tiktok_shop_mock.py` (stdlib) check the two marketplace mocks the same way: signatures against the
 vendors' documented examples, token refresh, paging, the order lifecycle flags, signed pushes, that `poll` emits
 exactly the fields of the triggers, and that the relay refuses a host outside the spec's `hosts:` before it sends
-anything. Juragan's local end-to-end demo uses the three mocks with dummy keys.
+anything. Juragan's local end-to-end demo uses the mocks with dummy keys.
 
 Until the kernel runs connectors, the retail and F&B apps read POS data from export files (rangka-apps
 `moka_item_details`, `loyverse_receipts`, `pos_sales_file`); the two POS specs above are what a scheduled flow will call.
 
-Planned, in rough order: QRIS (Midtrans), bank statements, e-Faktur / Coretax, Blibli, Lazada,
+ESB (ESB POS, ESB Core) has no connector here: ESB publishes neither an API reference nor the layout of its export
+files (research in Juragan's reports/keputusan-riset/esb-connector.md, 19 Nov 2026). Its sales come in through
+rangka-apps `pos_sales_file`, after `scripts/pos_export_to_template.py` converts the export with a mapping written from
+the first real file (`examples/pos-mappings`). A connector follows once ESB documents a partner API.
+
+Planned, in rough order: bank statements, e-Faktur / Coretax, Blibli, Lazada,
 GoFood / GrabFood, Accurate / Jurnal import.
 
 A payment connector ends in a `payment` whose `gateway_ref` is held by one live payment at a time in rangka-apps
