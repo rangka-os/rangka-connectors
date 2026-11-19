@@ -6,6 +6,7 @@
 Needs PyYAML (pip install pyyaml), as the rangka-os validator does.
 
 For a connector with a fixtures/ folder:
+- a trigger with confirm: has `confirmed` in each fixture, holding exactly the confirm action's outputs;
 - every trigger has at least one fixture (<trigger>.json or <trigger>_<case>.json), every action with an output one
   (<action>.json, the answer of the API);
 - every emit / output that is a field path resolves in each of its fixtures (null is allowed: the field is there);
@@ -234,8 +235,22 @@ def check(name):
                 elif got[key] != want:
                     errs.append(f"{base}: {key} = {got[key]!r}, want {want!r}")
 
+    outputs = {a["name"]: set((a.get("output") or {}).keys()) for a in spec.get("actions", [])}
     for t in spec.get("triggers", []):
         files = sorted(glob.glob(os.path.join(fx, t["name"] + ".json")) + glob.glob(os.path.join(fx, t["name"] + "_*.json")))
+        # a trigger with confirm: (rangka-os contract 0002): its fixture is the body plus `confirmed`, the confirm
+        # action's mapped output as the kernel hands it to emit; it holds that action's outputs, no other key
+        cf = (t.get("confirm") or {}).get("action")
+        if cf:
+            if cf not in outputs:
+                errs.append(f"trigger {t['name']}: confirm action {cf} is not declared")
+            for f in files:
+                n += 1
+                got = json.load(open(f)).get("confirmed")
+                if not isinstance(got, dict):
+                    errs.append(f"{os.path.basename(f)}: a confirmed trigger's fixture needs `confirmed` ({cf}'s output)")
+                elif set(got) != outputs.get(cf, set()):
+                    errs.append(f"{os.path.basename(f)}: confirmed keys {sorted(got)} are not {cf}'s outputs {sorted(outputs.get(cf, set()))}")
         mapping("trigger", t["name"], t.get("emit", {}), files)
     for a in spec.get("actions", []):
         inputs = {i["name"] for i in a.get("input", [])}

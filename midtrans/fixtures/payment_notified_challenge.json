@@ -10,5 +10,15 @@
  "merchant_id": "G000000001",
  "gross_amount": "990000.00",
  "fraud_status": "challenge",
- "currency": "IDR"
+ "currency": "IDR",
+ "confirmed": {
+  "gateway_ref": "INV-2026-00010",
+  "status": "capture",
+  "status_code": "200",
+  "paid": false,
+  "paid_amount": "990000.00",
+  "channel": "credit_card",
+  "transaction_id": "9f1c7a52-3b8e-4d61-a2f4-000000000007",
+  "refund_amount": null
+ }
 }

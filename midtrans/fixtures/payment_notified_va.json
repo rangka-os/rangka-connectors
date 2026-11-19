@@ -18,5 +18,15 @@
    "bank": "bca"
   }
  ],
- "payment_amounts": []
+ "payment_amounts": [],
+ "confirmed": {
+  "gateway_ref": "INV-2026-00008~2",
+  "status": "settlement",
+  "status_code": "200",
+  "paid": true,
+  "paid_amount": "400000.00",
+  "channel": "bank_transfer",
+  "transaction_id": "9f1c7a52-3b8e-4d61-a2f4-000000000008",
+  "refund_amount": null
+ }
 }

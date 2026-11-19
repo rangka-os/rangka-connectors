@@ -10,5 +10,15 @@
  "merchant_id": "G000000001",
  "gross_amount": "120000.00",
  "fraud_status": "accept",
- "currency": "IDR"
+ "currency": "IDR",
+ "confirmed": {
+  "gateway_ref": "INV-2026-00009",
+  "status": "expire",
+  "status_code": "407",
+  "paid": false,
+  "paid_amount": "120000.00",
+  "channel": "qris",
+  "transaction_id": "9f1c7a52-3b8e-4d61-a2f4-000000000007",
+  "refund_amount": null
+ }
 }

@@ -20,5 +20,15 @@
    "reason": "barang kurang",
    "refund_key": "retur-2"
   }
- ]
+ ],
+ "confirmed": {
+  "gateway_ref": "INV-2026-00007",
+  "status": "partial_refund",
+  "status_code": "200",
+  "paid": false,
+  "paid_amount": "750000.00",
+  "channel": "gopay",
+  "transaction_id": "9f1c7a52-3b8e-4d61-a2f4-000000000007",
+  "refund_amount": "250000.00"
+ }
 }

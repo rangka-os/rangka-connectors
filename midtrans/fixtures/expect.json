@@ -72,6 +72,17 @@
     "status_code": "200",
     "paid": true,
     "paid_amount": "750000.00",
-    "channel": "qris"
+    "channel": "qris",
+    "refund_amount": null
+  },
+  "payment_notified_relabelled.json": {
+    "gateway_ref": "INV-2026-00012",
+    "status": "cancel",
+    "paid": false,
+    "refunded": false
+  },
+  "payment_notified_other_amount.json": {
+    "paid": false,
+    "paid_amount": "750000.00"
   }
 }

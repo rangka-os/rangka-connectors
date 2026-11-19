@@ -6,10 +6,13 @@
 # Notifications carry their own signature in the body: signature_key = hex(SHA-512(order_id + status_code +
 # gross_amount + server key)), checked by the kernel before any flow runs (rangka-os contract 0002, body-field
 # signatures, refinement of 19 Nov 2026). Research and sources: rangka (Juragan) reports/keputusan-riset/midtrans-connector.md.
-# Only order_id, status_code and gross_amount are signed. What a flow acts on therefore comes from those three:
-# gateway_ref is the order id (one Midtrans transaction per order id, the key Midtrans itself names for idempotent
-# handling), external_id is our invoice number read from it, paid_amount is gross_amount, and paid needs status_code
-# 200. transaction_id, the times and refund_amount are not signed: they are for people to read, never a key.
+# Only order_id, status_code and gross_amount are signed: a genuine cancel or refund notification (status code 200 too)
+# could be resent with transaction_status changed to settlement. So the trigger confirms every notification with
+# Midtrans before any flow runs (confirm: get_status, rangka-os contract 0002, confirmed webhooks): paid, the status,
+# the channel and a refunded amount come from Midtrans's answer (`confirmed`), and paid also needs that answer to name
+# the same order id and the same amount as the signed fields. gateway_ref is the order id (one Midtrans transaction
+# per order id, the key Midtrans itself names for idempotent handling) and external_id our invoice number read from it.
+# A notification Midtrans cannot confirm (no answer, unknown order) starts no flow; Midtrans sends it again later.
 # An order id is used once at Midtrans: the first page or charge for an invoice uses the invoice number, a later one
 # (the first expired) uses <number>~<attempt>, attempt 2 to 9, and external_id drops that ending again.
 # The trigger fires for every notification (pending, settlement, expire, refund ...): a flow that records money starts
@@ -54,32 +57,36 @@ triggers:
         alg: sha512
         key: server_key
         concat: ['{body.order_id}', '{body.status_code}', '{body.gross_amount}', '{auth.server_key}']
+    confirm:
+      action: get_status
+      input: {gateway_ref: order_id}
     emit:
       # the order id (signed): stable per payment, the idempotency key and payment.gateway_ref
       gateway_ref: order_id
-      # our invoice number: the order id without the ~<attempt> ending of a second or later page
+      # our invoice number: the order id without the ~<attempt> ending of a second or later page (invoice numbers
+      # never hold a ~, so replacing the ending anywhere is safe)
       external_id: >-
         order_id.endsWith('~2') ? order_id.replace('~2', '') : order_id.endsWith('~3') ? order_id.replace('~3', '')
         : order_id.endsWith('~4') ? order_id.replace('~4', '') : order_id.endsWith('~5') ? order_id.replace('~5', '')
         : order_id.endsWith('~6') ? order_id.replace('~6', '') : order_id.endsWith('~7') ? order_id.replace('~7', '')
         : order_id.endsWith('~8') ? order_id.replace('~8', '') : order_id.endsWith('~9') ? order_id.replace('~9', '')
         : order_id
-      # gross_amount (signed) is a text with two decimals ("750000.00"); flows read it as a number
+      # gross_amount (signed, and equal to what Midtrans reports when paid) is a text with two decimals ("750000.00")
       paid_amount: gross_amount
-      status: transaction_status
+      # the status as Midtrans reports it now, not as the notification says
+      status: confirmed.status
       status_code: status_code
-      # Midtrans: a payment is complete when status_code is 200, the status is settlement (or capture, for a card)
-      # and fraud_status, when sent, is accept. status_code is the signed half: 201 is pending, 202 denied.
-      paid: "status_code == '200' && (transaction_status == 'settlement' || transaction_status == 'capture') && (!('fraud_status' in body) || fraud_status == 'accept')"
-      # a refund made in the Midtrans dashboard or by API: money out of the Midtrans balance, never money in
-      refunded: "status_code == '200' && (transaction_status == 'refund' || transaction_status == 'partial_refund')"
-      # Midtrans's payment_type (qris, bank_transfer, echannel, gopay, shopeepay, credit_card, ...); flows map it to
-      # payment.method
-      channel: payment_type
-      # not signed, for people to read only
-      transaction_id: transaction_id
+      # paid only when Midtrans confirms it: status code 200, settlement (or capture with fraud status accept) for this
+      # order id and this amount
+      paid: "confirmed.paid == true && confirmed.gateway_ref == order_id && confirmed.paid_amount == gross_amount"
+      # a refund made in the Midtrans dashboard: money out of the Midtrans balance, never money in
+      refunded: "confirmed.status == 'refund' || confirmed.status == 'partial_refund'"
+      # Midtrans's payment_type (qris, bank_transfer, echannel, gopay, ...); flows map it to payment.method
+      channel: confirmed.channel
+      transaction_id: confirmed.transaction_id
+      refund_amount: confirmed.refund_amount
+      # not signed and not confirmed, for people to read only
       paid_at: transaction_time
-      refund_amount: "'refund_amount' in body ? refund_amount : null"
 actions:
   - name: create_snap
     label: {id: Buat halaman bayar Midtrans}
@@ -234,6 +241,7 @@ actions:
       paid_amount: "'gross_amount' in response ? gross_amount : null"
       channel: "'payment_type' in response ? payment_type : null"
       transaction_id: "'transaction_id' in response ? transaction_id : null"
+      refund_amount: "'refund_amount' in response ? refund_amount : null"
     retry: {max: 3, backoff: exponential, on: [429, 500, 502, 503]}
     idempotency: input.gateway_ref
 limits:

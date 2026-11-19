@@ -14,5 +14,15 @@
  "transaction_type": "on-us",
  "settlement_time": "2026-11-19 10:13:05",
  "issuer": "gopay",
- "acquirer": "gopay"
+ "acquirer": "gopay",
+ "confirmed": {
+  "gateway_ref": "INV-2026-00007",
+  "status": "settlement",
+  "status_code": "200",
+  "paid": true,
+  "paid_amount": "750000.00",
+  "channel": "qris",
+  "transaction_id": "9f1c7a52-3b8e-4d61-a2f4-000000000007",
+  "refund_amount": null
+ }
 }
