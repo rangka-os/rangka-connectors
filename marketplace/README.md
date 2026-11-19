@@ -10,25 +10,45 @@ Tokopedia has no connector of its own. Its Open API was shut down on 30 Sep 2025
 
 ## Rules
 
-1. **Rangka is the master of stock.** Stock leaves when a person submits the day's sale in Rangka. The connector pushes
-   the available quantity to the marketplace (`update_stock`); a marketplace never writes stock into Rangka.
-2. **An order becomes a sale when it is paid and can be shipped** (`sold`), not when it is created and not when it is
-   completed. Its lines are staged and join the day's draft sale of the outlet that holds the marketplace stock: the
-   path Moka sales already take in rangka-apps (`moka_sale_line`, a daily draft `outlet_sales`, a person submits).
-   A flow never submits.
+1. **Rangka is the master of stock.** Stock leaves Rangka when a person submits the day's sale; a marketplace never
+   writes stock into Rangka. The quantity pushed to a marketplace (`update_stock`) is the stock balance in Rangka of
+   the outlet that holds marketplace stock, minus every marketplace line already staged but not yet in a submitted
+   sale (all channels), minus a buffer the owner sets. It is pushed after an order is staged and after a stock change
+   in Rangka (a receipt, a POS sale, a submitted sale, an adjustment), never before staging. Between a marketplace sale
+   and its staging (up to one poll interval) the marketplace keeps its own decrement while Rangka does not know the
+   sale yet, so a push must not run on a timer alone: a timed push inside that gap puts the sold units back on sale.
+   Every push carries a `revision` (see "Actions").
+2. **An order becomes a sale when it can be shipped** (`sold`), not when it is created and not when it is completed.
+   Its lines are staged and join the day's draft sale of the outlet that holds the marketplace stock: the path Moka
+   sales already take in rangka-apps (`moka_sale_line`, a daily draft `outlet_sales`, a person submits). A flow never
+   submits. A prepaid order is `sold` once paid; a cash on delivery (COD) order is `sold` before any payment, with
+   `paid_at` null, and its money arrives with the settlement. A COD order the buyer refuses is reversed when the
+   marketplace reports it `cancelled`; if the marketplace treats it as a return instead, rule 3 applies.
 3. **A cancelled order** (`cancelled`) drops its staged lines, or adds a negative line when the day's sale is already
-   submitted. **A return after completion** is a negative line on the day the return is accepted.
-4. **Fees are booked at settlement**, from what the marketplace reports for the order: commission, service and
-   transaction fees are an expense (rangka-apps account 61200, "Biaya admin pembayaran"). A voucher or discount the
-   seller pays for is a sales discount on the line, never an expense. Tax the marketplace withholds (PPh 22, PMK
-   37/2025) is a prepaid tax asset, never an expense.
-5. **The payout clears a receivable per marketplace**; the settlement event is what the receivable is reconciled with.
+   submitted. A `cancelled` on an order that was never staged (UNPAID to CANCELLED, or paid and cancelled within one
+   poll interval) adds nothing. **Returns are not read in v0.1.** No connector reads the marketplace's returns: a
+   return after completion is booked by a person from the seller centre, as a Moka refund outside its window is.
+   Shopee `TO_RETURN` and TikTok Shop's returns set no flag. Reading returns is the next step ("Adding later").
+4. **Fees are booked at settlement**, from what the marketplace reports for the order, and only the named lines:
+   `commission_fee`, `service_fee` and `transaction_fee` are an expense (rangka-apps account 61200, "Biaya admin
+   pembayaran"), `withheld_tax` is a prepaid tax asset (PPh 22, PMK 37/2025), never an expense. A voucher or discount
+   the seller pays for is a sales discount on the line, never an expense. Any remaining gap between the staged sale
+   and what the marketplace pays (a return, a chargeback, an adjustment, a fee not named here) stays open on the
+   marketplace receivable for a person to review; a flow never books it as a cost.
+5. **The payout clears a receivable per marketplace**, with `adjusted_net` when the vendor reports it, else `net`. The
+   settlement event is what the receivable is reconciled with.
 6. **SKU is the join key.** The marketplace's seller SKU must equal the item's `sku` in Rangka. A line without a match
    is held as unmapped until a person maps it. There is no per-channel SKU table.
 7. **No buyer data is kept.** The platforms mask names, phones and addresses, and Shopee allows personal data to be
    stored for 90 days at most. The events below carry none; the customer in Rangka is one per marketplace.
 8. **One shop per marketplace per company** in this version: the connector's keys are the keys of one shop.
-9. **Money is whole rupiah as the vendor reports it.** Nothing is rounded or summed in the connector; flows add up.
+9. **Money is whole rupiah as the vendor reports it**: a number from Shopee, a decimal string from TikTok Shop. A flow
+   converts with `double()` before it adds or compares, so one flow serves both. Nothing is rounded or summed in the
+   connector.
+10. **Each channel has a start day** in rangka-apps (like Moka's `moka_api_from`): orders paid before it are not staged,
+    so sales entered by hand before the connector was switched on are not booked twice. **A sale's day** is the WIB day
+    of `paid_at`; for a COD order without `paid_at`, the WIB day it became `sold`. A backlog read after an outage lands
+    on the days the orders were paid, not on the day of the run.
 
 ## Events
 
@@ -37,8 +57,10 @@ vendor does not report is emitted as null and pinned to null in `fixtures/expect
 
 ### `<connector>.order_changed`
 
-Emitted for every order the marketplace changed in the polled window. The kernel drops an event whose emitted values
-did not change (the event key is their hash), so a flow runs once per real change.
+Emitted for every order the marketplace changed in the polled window, on every poll: the same order comes again on
+later polls. The kernel drops an event only when every emitted value is unchanged (the event key is their hash), and
+the relay (below) posts every event of the window again on every poll. So a flow never assumes one run per change:
+every flow has an idempotency key ("Flow keys").
 
 | Field | Meaning |
 |---|---|
@@ -46,18 +68,18 @@ did not change (the event key is their hash), so a flow runs once per real chang
 | `storefront` | Where the buyer bought: `SHOPEE`; for `tiktok_shop` the order's `commerce_platform` (`TIKTOK_SHOP`, `TOKOPEDIA`, `TIKTOK_SHOP_APP`) |
 | `order_id` | The marketplace's order number (text) |
 | `status` | The vendor's own status, unchanged |
-| `sold` | true while the order is paid, not cancelled, and can be or has been shipped: stage its lines |
+| `sold` | true while the order can be or has been shipped and is not cancelled (paid, or COD): stage its lines |
 | `shipped` | true once the parcel left the seller |
 | `completed` | true once the marketplace closed the order (the settlement follows) |
 | `cancelled` | true once the order is cancelled: reverse what was staged |
-| `created_at`, `paid_at`, `updated_at` | Unix seconds, as the vendor reports them (`paid_at` null until paid) |
+| `created_at`, `paid_at`, `updated_at` | Unix seconds, as the vendor reports them (`paid_at` null until paid; a COD order is `sold` with `paid_at` null) |
 | `currency` | `IDR` |
 | `buyer_total` | What the buyer paid for the order, shipping included |
 | `lines` | The vendor's own list of order lines, unchanged (see "Lines per marketplace") |
 
 `sold`, `shipped`, `completed` and `cancelled` are derived in the connector from the vendor's status, so a flow never
-knows a vendor's status names. A status that is none of them (a cancellation being processed, an order on hold) changes
-nothing: the flow waits for the next event.
+knows a vendor's status names. A status that is none of them (a cancellation being processed, an order on hold, a
+return) changes nothing: the flow waits for the next event.
 
 | Flag | `shopee` (`order_status`) | `tiktok_shop` (`status`) |
 |---|---|---|
@@ -69,20 +91,35 @@ nothing: the flow waits for the next event.
 
 ### `<connector>.order_settled`
 
-Emitted once the marketplace released the money of an order.
+Emitted once the marketplace released the money of an order, and again on every poll whose window still holds it.
 
 | Field | Meaning |
 |---|---|
 | `channel`, `order_id`, `currency` | As above |
 | `settled_at` | Unix seconds: when the money was released |
 | `net` | What the seller receives for the order |
-| `commission_fee`, `service_fee`, `transaction_fee` | The named fee lines, with the vendor's own sign: Shopee reports a fee as a positive number, TikTok Shop as a negative one, so a flow books the absolute value. null when the vendor has no such single line (TikTok Shop has no single service fee; its program fees stay in `income`) |
-| `withheld_tax` | Tax the marketplace withheld from the seller, with the vendor's sign (null when the vendor does not report it per order) |
-| `income` | The vendor's own record, unchanged: other fee lines, vouchers and shipping are read from it by the flow. For `tiktok_shop` every statement transaction is emitted; only records whose `income.type` is `ORDER` are an order's settlement |
+| `adjusted_net` | What the seller receives after the marketplace's later adjustments to the order (Shopee `escrow_amount_after_adjustment`); null when the vendor does not report it per order (TikTok Shop). The receivable is cleared with `adjusted_net` when present, else `net` |
+| `commission_fee`, `service_fee`, `transaction_fee` | The named fee lines, with the vendor's own sign. A fee in the vendor's cost direction is an expense; the opposite direction is a refund of that fee and reduces it. Shopee: positive is a cost; TikTok Shop: negative is a cost. Never take the absolute value. null when the vendor has no such single line (TikTok Shop has no single service fee; its program fees stay in `income`) |
+| `withheld_tax` | Tax the marketplace withheld from the seller, with the vendor's sign and the same direction rule (null when the vendor does not report it per order). PPh 22 on a return: the marketplace issues a negative slip; v0.1 leaves it to the person who books the return |
+| `income` | The vendor's own record, unchanged: other fee lines, vouchers and shipping are read from it. For `tiktok_shop` every statement transaction is emitted; only records whose `income.type` is `ORDER` are an order's settlement. Other records (`RESERVE`, `CHARGE_BACK`, adjustments) have an empty `order_id` and are not order settlements: a person reviews them against the receivable |
 
 The vendor's breakdown is kept whole because marketplaces add fee lines often (Shopee added three between July and
-November 2026). A flow books the three named fees and treats the rest of the gap between the sale and `net` as
-"other marketplace costs" until a line is named here.
+November 2026). A flow books only the named fees and the withheld tax; whatever else separates the sale from the
+payout stays open on the receivable (rule 4) until a line is named here.
+
+### Flow keys
+
+The kernel and the relay deliver the same event more than once, so every flow on these events MUST have an
+idempotency key, and the staging flow acts on transitions only (`shipped` and `completed` book nothing in v0.1):
+
+| Flow | Runs when (`if:`) | Idempotency key | Does |
+|---|---|---|---|
+| `<connector>_order_staged` | `sold` | `channel + ':' + order_id + ':sold'` | Stages the order's lines once |
+| `<connector>_order_staged` | `cancelled` | `channel + ':' + order_id + ':cancelled'` | Reverses once what was staged (nothing when it was never staged, rule 3) |
+| `<connector>_order_settled` | always for `shopee`; `income.type == 'ORDER'` for `tiktok_shop` | `channel + ':' + order_id + ':settled'` | Books the named fees and withheld tax and the receivable, once |
+
+A run whose key was seen before does nothing. A TikTok Shop record that is not `ORDER` never reaches a booking
+(its `order_id` is empty, so it could not be keyed anyway).
 
 ### Lines per marketplace
 
@@ -103,17 +140,33 @@ A staging flow reads these fields from `lines`; nothing else differs between mar
 |---|---|
 | `list_orders`, `get_order_detail` (or one action when the vendor's list is complete) | Read by `order_changed` |
 | `list_settlements`, `get_settlement` (or one action) | Read by `order_settled` |
-| `update_stock` | Set the available quantity of one SKU to an absolute number (never a delta) |
+| `update_stock` | Set the available quantity of rule 1 for one SKU to an absolute number, never a delta. Required input `revision`: the sequence of the stock change in Rangka (the last stock move's id or time). Its idempotency key is the vendor ids + `':'` + quantity + `':'` + `revision`, so the same quantity is sent again after a change, and the same push repeated is sent once. Output `failures`: the vendor's per-item failure list (Shopee `failure_list`, TikTok Shop `data.errors`). The vendor answers a partial failure with success, so a flow MUST treat a non-empty `failures` as a failed push and tell the owner |
 | `get_tracking` | The tracking number of a shipped order |
 
 Arranging a shipment (pickup, drop-off, labels) stays in the seller centre in this version.
 
-## Known limits of the kernel today
+## Known limits
 
+- Each poll reads a fixed window (orders changed in the last two days; Shopee escrows released in the last two days;
+  TikTok Shop statements of the last seven days). There is no cursor: after an outage longer than the window (relay
+  off, kernel down, token expired) run the relay once with `poll --since-days N` (TikTok Shop: also
+  `--settled-days N`), N covering the outage. The flow keys make the overlap harmless.
 - `each:` calls its list action once, without input, so a kernel poll reads only the first page of orders or
-  settlements changed in the window (100). The relay follows every page.
+  settlements changed in the window (100). The relay follows every page of orders, statements and statement
+  transactions.
 - A webhook trigger is a hint only: Shopee's push and TikTok Shop's webhook carry a status but no lines, and TikTok's
   order webhook says `CANCEL` where its API says `CANCELLED`. Flags come only from the polled order.
+- TikTok Shop `update_stock` sends an empty `warehouse_id` by default, read as the shop's default warehouse; to
+  confirm in the Development Shop (if TikTok refuses it, the push comes back in `failures` and the flow must pass the
+  warehouse id).
+
+## Adding later
+
+- **Returns** (the next step): a trigger per connector over Shopee `/api/v2/returns/*` (`get_return_list`,
+  `get_return_detail`) and TikTok Shop `/return_refund/202602/returns/search`, emitting negative lines and the refund
+  on the day the return is accepted, with PPh 22's negative slip. Until then a person books returns (rule 3).
+- Adjustments and chargebacks booked by a flow (Shopee `order_adjustment[]`, TikTok Shop records that are not
+  `ORDER`), instead of a person reviewing them on the receivable.
 
 ## Until the kernel signs these requests
 
@@ -127,7 +180,11 @@ Until then a connector runs the way `moka` does. `<connector>/mock/<connector>_m
 from its documented payloads and checks every signature. Its `poll` command reads the API the way the kernel's poll
 trigger will (signing, paging, the token refresh), and hands each event, in the trigger's emit shape, to the tenant's
 flow `<connector>_order_staged` or `<connector>_order_settled` through `POST /api/v1/flows/<name>/run`. The poller
-takes the API's address as an argument, so the same command reads the vendor's sandbox once keys exist.
+takes the API's address as an argument, so the same command reads the vendor's sandbox once keys exist. It sends the
+vendor's keys and tokens only over https to the hosts in the spec's `hosts:` (plain http only to 127.0.0.1 or
+localhost, the mock), and `RANGKA_TOKEN` only over https or plain http to 127.0.0.1 or localhost. A real run needs
+`--token-file` (mode 0600): the vendor rotates the token pair on a refresh, so the relay writes the new pair there on
+every run that refreshed, dry runs included.
 
 A marketplace app has one callback URL for every shop. A seller's own app (Shopee "Seller In House System", TikTok
 Shop "seller developer") points it at the company's own hook. One app for many shops needs a gateway that verifies

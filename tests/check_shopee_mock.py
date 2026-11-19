@@ -7,7 +7,9 @@ per event with the Rangka token. Stdlib only (PyYAML when importable), no networ
 
     python3 tests/check_shopee_mock.py
 """
+import contextlib
 import hashlib
+import io
 import hmac
 import json
 import os
@@ -263,9 +265,19 @@ check("expired token: one refresh, then the same events", cl2.refreshed and len(
 check("rotated tokens written to --token-file with mode 0600", saved.get("refresh_token") == cl2.refresh_token != RT
       and stat.S_IMODE(os.stat(tfile).st_mode) == 0o600, (saved.keys(), oct(os.stat(tfile).st_mode) if saved else None))
 pmock.clock = Clock(NOW + 2 * m.ACCESS_TTL + 120)
-cl3 = m.Client(pbase, PID, KEY, SHOP, cl2.access_token, cl2.refresh_token, token_file=os.path.join(tdir, "dry.json"), save=False, now=pmock.clock)
-m.collect(cl3, 2.3, 100)
-check("dry run: refreshes but writes no token file", cl3.refreshed and not os.path.exists(os.path.join(tdir, "dry.json")))
+dry = os.path.join(tdir, "dry.json")
+rmock = m.Mock(FIX, PID, KEY, SHOP, AT, RT)   # the real clock, as the subprocess has; its access token already expired
+rmock.access[AT] = 1
+rsrv, rbase = serve(m.handler(rmock))
+r = subprocess.run([sys.executable, m.__file__, "poll", "--api", rbase, "--dry-run", "--token-file", dry],
+                   capture_output=True, text=True, timeout=60,
+                   env=dict({k: v for k, v in os.environ.items() if not k.startswith(("SHOPEE_", "RANGKA_"))}, SHOPEE_PARTNER_ID=str(PID),
+                            SHOPEE_PARTNER_KEY=KEY, SHOPEE_SHOP_ID=str(SHOP), SHOPEE_ACCESS_TOKEN=AT,
+                            SHOPEE_REFRESH_TOKEN=RT))
+dsaved = json.load(open(dry)) if os.path.exists(dry) else {}
+check("dry run that refreshed: the rotated pair is written too (Shopee already rotated it), mode 0600",
+      r.returncode == 0 and json.loads(r.stderr.strip().splitlines()[-1]).get("refreshed") and dsaved.get("refresh_token") not in (None, RT)
+      and stat.S_IMODE(os.stat(dry).st_mode) == 0o600, (r.returncode, r.stderr[-300:]))
 
 # 6. the simulated lifecycle, with pushes verified by a receiver
 pushes = []
@@ -358,6 +370,17 @@ check("update_stock below the reserved stock (2): refused, stock kept",
 st, out = set_stock(3001001, 0, 0)
 check("update_stock of an item without variations (model_id 0) to 0", st == 200 and out["response"]["success_list"] == [{"model_id": 0, "location_id": "IDZ", "stock": 0}], out)
 
+# 7b. update_stock in the spec: a required revision in the idempotency key (a later push of a quantity sent before
+# is a new key; the same push repeated is the same key), failures in the output
+stock_block = spec_text.split("  - name: update_stock\n", 1)[1].split("\n  - name: ", 1)[0]
+check("spec update_stock: revision is a required input and ends the idempotency key; output failures = failure_list",
+      re.search(r"\{name: revision, type: data, required: true", stock_block) is not None
+      and "idempotency: string(input.item_id) + ':' + string(input.model_id) + ':' + string(input.stock) + ':' + input.revision\n" in stock_block + "\n"
+      and "failures: response.failure_list" in stock_block and "as_of" not in stock_block, stock_block[-600:])
+key = lambda item, model, n, rev: f"{item}:{model}:{n}:{rev}"  # noqa: E731  (the spec's key, in Python)
+pushes_keys = [key(3001002, 4002001, n, rev) for n, rev in ((5, "mv-101"), (3, "mv-102"), (5, "mv-103"), (5, "mv-103"))]
+check("stock keys: 5, 3, 5 again after two changes are three keys; a repeated push is one", len(set(pushes_keys)) == 3, pushes_keys)
+
 # 8. deliver: one POST per event to the flow, Bearer RANGKA_TOKEN
 got = []
 
@@ -396,6 +419,49 @@ check("poll --dry-run: JSON lines, one per order and settlement, keys = the spec
 check("poll output carries no token", AT not in r.stdout + r.stderr and KEY not in r.stdout + r.stderr)
 r = subprocess.run([sys.executable, m.__file__, "poll", "--api", "http://203.0.113.9:8931", "--dry-run"], capture_output=True, text=True, env=env, timeout=30)
 check("poll refuses plain http to another machine", r.returncode != 0 and "--api must be" in r.stderr, r.stderr[-200:])
+# the relay checks every address before it sends anything: urlopen is replaced by a recorder for these runs
+sent = []
+real_urlopen = m.urllib.request.urlopen
+m.urllib.request.urlopen = lambda req, *a, **k: sent.append(getattr(req, "full_url", req)) or (_ for _ in ()).throw(OSError("blocked"))
+saved_env = dict(os.environ)
+os.environ.update(env, RANGKA_TOKEN="rk-token")
+
+
+def refused(args):
+    try:
+        with contextlib.redirect_stderr(io.StringIO()):
+            m.main(args)
+        return False
+    except SystemExit as e:
+        return e.code not in (0, None)
+
+
+try:
+    tf = os.path.join(tdir, "relay.json")
+    r1 = refused(["poll", "--api", "https://attacker.example", "--dry-run"])
+    r2 = refused(["poll", "--api", "http://203.0.113.9:8931", "--rangka", "http://127.0.0.1:1", "--token-file", tf])
+    r3 = refused(["poll", "--api", cbase, "--rangka", "http://203.0.113.9:8101", "--token-file", tf])
+    r4 = refused(["poll", "--api", cbase, "--rangka", "http://127.0.0.1:1"])
+finally:
+    m.urllib.request.urlopen = real_urlopen
+    os.environ.clear()
+    os.environ.update(saved_env)
+check("relay: a host outside connector.rk (https or plain http) is refused before any request is sent", r1 and r2 and not sent, sent)
+check("relay: RANGKA_TOKEN over plain http to another machine is refused before any request is sent", r3 and not sent, sent)
+check("relay: a run that posts refuses to start without --token-file", r4 and not sent, sent)
+check("relay: https to any kernel, plain http to this machine only",
+      m.check_rangka("https://rangka.example/") == "https://rangka.example" and m.check_rangka("http://localhost:8101") == "http://localhost:8101")
+
+# --day <today> early in the morning: the newest fixture time lies at most at now, so a poll finds every fixture
+early = Clock(int(datetime.now(WIB).replace(hour=7, minute=0, second=0, microsecond=0).timestamp()))
+dmock = m.Mock(FIX, PID, KEY, SHOP, AT, RT, day=datetime.fromtimestamp(early.t, WIB).date().isoformat(), clock=early)
+times = [o.get(k) or 0 for o in dmock.orders.values() for k in ("create_time", "update_time", "pay_time", "pickup_done_time")]
+times += [s["escrow"]["escrow_release_time"] for s in dmock.settlements.values()]
+dsrv, dbase = serve(m.handler(dmock))
+dev = m.collect(m.Client(dbase, PID, KEY, SHOP, AT, RT, now=early), 2, 100)
+check("--day today at 07:00 WIB: no fixture time after now, the poll finds every order and the settlement",
+      max(times) <= early.t and len(dev) == len(detail) + 1, (max(times) - early.t, len(dev)))
+
 check("only dummy keys", m.dummy_key(KEY) and m.dummy_key("TEST.x") and not m.dummy_key("live-partner-key") and not m.dummy_key("attest-key")
       and not m.dummy_key(""))
 r = subprocess.run([sys.executable, m.__file__, "serve", "--port", "0"], capture_output=True, text=True,

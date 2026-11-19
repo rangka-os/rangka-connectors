@@ -63,6 +63,7 @@
   "currency": "IDR",
   "settled_at": 1794985200,
   "net": "26550",
+  "adjusted_net": null,
   "commission_fee": "-1200",
   "service_fee": null,
   "transaction_fee": "-600",
@@ -95,7 +96,7 @@
   "settlement": "26550"
  },
  "update_stock.json": {
-  "errors": null
+  "failures": null
  },
  "get_tracking.json": {
   "tracking_number": "JX0000000102",

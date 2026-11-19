@@ -115,8 +115,11 @@ triggers:
   # page over next_page_token (empty on the last page). The search answer is the full order object (the same schema
   # as order detail 202507, commerce_platform, payment and line_items included), so no detail call per order is made;
   # if the sandbox shows fields missing from search, this becomes each: over list_orders with get_order_detail.
-  # A changed order emits a new event (the kernel drops an event whose emitted values did not change).
-  # lines are TikTok's line_items unchanged: there is no quantity field, each unit sold is its own entry.
+  # The same order is emitted again on later polls: the kernel drops an event only when every emitted value is
+  # unchanged, and the relay posts every event of the window on every poll, so every flow has the idempotency key of
+  # marketplace/README.md ("Flow keys"). After an outage longer than two days, run the relay once with
+  # poll --since-days N. lines are TikTok's line_items unchanged: there is no quantity field, each unit sold is its own
+  # entry. A COD order is AWAITING_SHIPMENT, so sold, with paid_time absent. Returns set no flag (not read in v0.1).
   - name: order_changed
     label: {id: Pesanan baru atau berubah}
     via: poll
@@ -147,10 +150,14 @@ triggers:
   # Settlements: the paid daily statements of the last seven days (one statement per seller per day, generated at
   # 00:00 UTC; Get Payments is closed to SEA, so payment_time of the statement is when the money was released), then
   # the statement's transactions (202501; the 202309 paths were sunset on 31 Dec 2025), one record per order.
-  # A record of another type (RESERVE, an adjustment such as CHARGE_BACK) has an empty order_id; a flow reads
-  # income.type and books only ORDER records. Fees and taxes keep TikTok's sign (negative strings in its samples).
+  # A record of another type (RESERVE, an adjustment such as CHARGE_BACK) has an empty order_id and is not an order
+  # settlement: the settlement flow runs only if income.type == 'ORDER' (key channel:order_id:settled) and a person
+  # reviews the other records against the receivable. Fees and taxes keep TikTok's sign: negative is a cost, positive
+  # refunds it (never the absolute value); money is a decimal string, which a flow converts with double().
   # service_fee is null: TikTok reports no single service fee but a dozen named program fees (sfp_service_fee_amount,
   # voucher_xtra_service_fee_amount, mall_service_fee_amount, ...), which stay in income.fee_tax_breakdown.fee.
+  # adjusted_net is null: TikTok reports adjustments as their own records, not per order. After an outage longer than
+  # seven days, run the relay once with poll --settled-days N.
   - name: order_settled
     label: {id: Dana pesanan cair}
     via: poll
@@ -168,6 +175,7 @@ triggers:
       currency: statement.currency
       settled_at: statement.payment_time
       net: item.settlement_amount
+      adjusted_net: "null"
       commission_fee: item.fee_tax_breakdown.fee.platform_commission_amount
       service_fee: "null"
       transaction_fee: item.fee_tax_breakdown.fee.transaction_fee_amount
@@ -223,7 +231,12 @@ actions:
     output: {transactions: data.transactions, next: data.next_page_token, settlement: data.total_settlement_amount}
     retry: {max: 5, backoff: exponential, on: [429, 500, 502, 503]}
   # Absolute quantity per SKU and warehouse (the legacy mode: sku_warehouse_stock_update_mode, new in Oct 2026, is not
-  # sent). One number serves both storefronts. A partial failure answers code 0 with data.errors.
+  # sent). One number serves both storefronts. The quantity is the available stock of marketplace/README.md rule 1,
+  # pushed after a staging or a stock change in Rangka, never on a timer alone. revision (required: the sequence of the
+  # stock change in Rangka) is in the idempotency key, so a later push of a quantity sent before is sent, while the same
+  # push repeated is sent once. A partial failure answers code 0 with data.errors (output failures): a flow treats a
+  # non-empty failures as a failed push and tells the owner. An empty warehouse_id is read as the shop's default
+  # warehouse; to confirm in the Development Shop.
   - name: update_stock
     label: {id: Kirim stok}
     request:
@@ -241,9 +254,10 @@ actions:
       - {name: sku_id, type: data, required: true}
       - {name: quantity, type: int, required: true, help: {id: 'Stok tersedia, angka utuh (bukan selisih)'}}
       - {name: warehouse_id, type: data, default: "''", help: {id: 'Kosongkan untuk gudang utama toko'}}
-    output: {errors: data.errors}
+      - {name: revision, type: data, required: true, help: {id: 'Urutan perubahan stok di Rangka, misalnya id atau waktu gerak stok terakhir, supaya jumlah yang sama bisa dikirim lagi setelah ada perubahan'}}
+    output: {failures: data.errors}
     retry: {max: 5, backoff: exponential, on: [429, 500, 502, 503]}
-    idempotency: input.product_id + ':' + input.sku_id + ':' + input.warehouse_id + ':' + string(input.quantity)
+    idempotency: input.product_id + ':' + input.sku_id + ':' + input.warehouse_id + ':' + string(input.quantity) + ':' + input.revision
   # The tracking number of a package (packages[].id or line_items[].package_id of the order).
   - name: get_tracking
     label: {id: Nomor resi}

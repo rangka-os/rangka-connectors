@@ -10,7 +10,7 @@ For demos and tests without a Shopee developer account.
     SHOPEE_PARTNER_ID=2009001 SHOPEE_PARTNER_KEY=test-dummy-shopee-key SHOPEE_SHOP_ID=880001 \
     SHOPEE_ACCESS_TOKEN=... SHOPEE_REFRESH_TOKEN=... RANGKA_TOKEN=... \
         python3 shopee/mock/shopee_mock.py poll --api http://127.0.0.1:8931 --rangka http://127.0.0.1:8101 \
-        [--since-days 2] [--page-size 100] [--token-file ~/.shopee-tokens.json] [--dry-run]
+        --token-file ~/.shopee-tokens.json [--since-days 2] [--page-size 100] [--dry-run]
 
 Dummy keys only for serve. The mock signs any push it is asked for (/simulate/*, no authentication): it is a signing
 oracle for its key. So it listens on 127.0.0.1 only, reads the partner key from SHOPEE_MOCK_PARTNER_KEY (not argv,
@@ -41,8 +41,9 @@ error_param (400), error_sign, error_auth, invalid_acceess_token (403; Shopee's 
   /simulate/complete/<sn> (also releases its escrow), /simulate/cancel/<sn>[?status=IN_CANCEL]: each bumps the
   update time and sends push code 3 (and code 4 on ship, first) to --push-url, signed as Shopee signs: Authorization =
   hex HMAC-SHA256(partner key, <push url> + '|' + <raw body>).
---day D moves every fixture time by the days between the fixtures' last update day and D, so one fixture set serves
-any demo date.
+--day D moves every fixture time by whole days so that the fixtures' last update day becomes D, then one day further
+back while the newest fixture time would still lie after now (so --day <today> before 08:30 WIB lands on yesterday and
+a poll finds every fixture): one fixture set serves any demo date.
 
 poll is the relay that stands in for the kernel (marketplace/README.md, "Until the kernel signs these requests"): it
 signs every request, refreshes once on an expired-token error and retries, lists the orders changed in the last
@@ -50,9 +51,16 @@ signs every request, refreshes once on an expired-token error and retries, lists
 same days and reads each one, builds every event with exactly the emit mapping of order_changed and order_settled in
 shopee/connector.rk, and posts it to the tenant's flow shopee_order_staged or shopee_order_settled
 (POST /api/v1/flows/<name>/run, {"event": ...}, Bearer RANGKA_TOKEN), as moka_mock.py poll does. --dry-run prints the
-events as JSON lines instead and writes nothing. --token-file (0600) keeps the rotated pair: it is read first when it
-exists and rewritten after a refresh (not on a dry run). --api is the mock, or once keys exist Shopee's sandbox or live
-host (https, the hosts of connector.rk only; plain http only to 127.0.0.1).
+events as JSON lines instead and posts nothing. --token-file (0600) keeps the rotated pair: it is read first when it
+exists and rewritten after every refresh, dry runs included (Shopee has already rotated the pair, and the old refresh
+token only replays it for 4 hours). A run that posts refuses to start without --token-file. --api is the mock, or once
+keys exist Shopee's sandbox or live host: the partner key and tokens go only over https to the hosts of connector.rk,
+or plain http to 127.0.0.1 or localhost. RANGKA_TOKEN goes only over https, or plain http to 127.0.0.1 or localhost.
+Both are checked before any request is sent.
+
+Each poll reads a fixed window and keeps no cursor: after an outage longer than the window (relay off, kernel down,
+token expired) run poll --since-days N once, N covering the outage. The flows' idempotency keys (marketplace/README.md,
+"Flow keys") make the overlap and the repeated events of every poll harmless.
 
 Synthetic data only. Stdlib only.
 """
@@ -147,6 +155,7 @@ def settled_event(escrow: dict, settlement: dict) -> dict:
     return {
         "channel": "shopee", "order_id": settlement.get("order_sn"), "currency": "IDR",
         "settled_at": escrow.get("escrow_release_time"), "net": inc.get("escrow_amount"),
+        "adjusted_net": inc.get("escrow_amount_after_adjustment"),
         "commission_fee": inc.get("commission_fee"), "service_fee": inc.get("service_fee"),
         "transaction_fee": inc.get("seller_transaction_fee"), "withheld_tax": inc.get("withholding_tax"), "income": inc,
     }
@@ -198,6 +207,11 @@ class Mock:
         if day:
             last = max(_wib_day(o["update_time"]) for o in orders)
             shift = (date.fromisoformat(day) - last).days * 86400
+            # never in the future: a poll's window ends at now, so a fixture after now would be missed
+            newest = max([o.get(k) or 0 for o in orders for k in ("create_time", "update_time", "pay_time", "pickup_done_time")]
+                         + [e["escrow_release_time"] for e in escrows]) + shift
+            if newest > self.now():
+                shift -= -(-(newest - self.now()) // 86400) * 86400
         self.orders: dict[str, dict] = {}
         for o in orders:
             o = copy.deepcopy(o)
@@ -662,14 +676,22 @@ def check_api(api: str) -> str:
     raise SystemExit(f"--api must be https://{HOSTS[0]}, https://{HOSTS[1]} or http://127.0.0.1:<port> (the mock)")
 
 
+def check_rangka(rangka: str) -> str:
+    """The kernel URL the relay may send RANGKA_TOKEN to: https, or plain http to this machine."""
+    u = urllib.parse.urlsplit(rangka or "")
+    if (u.scheme == "https" and u.hostname) or (u.scheme == "http" and u.hostname in LOCAL):
+        return rangka.rstrip("/")
+    raise SystemExit("--rangka must be https://<kernel> or http://127.0.0.1:<port>: RANGKA_TOKEN never goes over plain http to another machine")
+
+
 class Client:
     """Signs Shopee calls and refreshes the token pair once per run when Shopee says it expired."""
 
     def __init__(self, api: str, partner_id, partner_key: str, shop_id, access_token: str, refresh_token: str,
-                 token_file: str | None = None, save: bool = True, now=None):
+                 token_file: str | None = None, now=None):
         self.api, self.partner_id, self.partner_key, self.shop_id = check_api(api), str(partner_id), partner_key, str(shop_id)
         self.access_token, self.refresh_token = access_token, refresh_token
-        self.token_file, self.save, self.now = token_file, save, now or time.time
+        self.token_file, self.now = token_file, now or time.time
         self.refreshed, self.calls = False, 0
 
     def call(self, method: str, path: str, query: dict | None = None, body: dict | None = None, public: bool = False) -> dict:
@@ -713,12 +735,10 @@ class Client:
         # the rotated refresh token is kept before the new access token is used (proposal part C)
         self.access_token, self.refresh_token = doc["access_token"], doc["refresh_token"]
         self.refreshed = True
-        if self.token_file and self.save:
+        # written on every run, dry runs included: Shopee has already rotated the pair
+        if self.token_file:
             write_tokens(self.token_file, {"access_token": self.access_token, "refresh_token": self.refresh_token,
                                            "expires_at": int(self.now()) + int(doc.get("expire_in") or 0)})
-        elif self.token_file:
-            print("shopee poll: tokens rotated on a dry run and not written; the old refresh token replays them for 4 hours",
-                  file=sys.stderr)
 
 
 def write_tokens(path: str, doc: dict):
@@ -811,10 +831,11 @@ def main(argv=None):
     p = sub.add_parser("poll")
     p.add_argument("--api", required=True, help="the mock (http://127.0.0.1:<port>) or Shopee's sandbox or live host")
     p.add_argument("--rangka", help="the kernel's base URL (not needed with --dry-run)")
-    p.add_argument("--dry-run", action="store_true", help="print the events as JSON lines, post nothing, write no token")
+    p.add_argument("--dry-run", action="store_true", help="print the events as JSON lines, post nothing")
     p.add_argument("--since-days", type=float, default=2)
     p.add_argument("--page-size", type=int, default=100)
-    p.add_argument("--token-file", default=None, help="the rotated token pair, mode 0600 (read first when it exists)")
+    p.add_argument("--token-file", default=None, help="the rotated token pair, mode 0600 (read first when it exists; "
+                   "needed unless --dry-run)")
     a = ap.parse_args(argv)
     if a.cmd == "serve":
         key = os.environ.get("SHOPEE_MOCK_PARTNER_KEY", "")
@@ -830,6 +851,14 @@ def main(argv=None):
         except KeyboardInterrupt:
             pass
         return 0
+    # hosts first: nothing is sent anywhere before both addresses are allowed
+    api = check_api(a.api)
+    if not a.dry_run:
+        if not a.rangka:
+            ap.error("--rangka is needed unless --dry-run")
+        check_rangka(a.rangka)
+        if not a.token_file:
+            ap.error("--token-file is needed unless --dry-run: Shopee rotates the token pair on a refresh")
     env = {k: os.environ.get(k, "") for k in ("SHOPEE_PARTNER_ID", "SHOPEE_PARTNER_KEY", "SHOPEE_SHOP_ID",
                                                "SHOPEE_ACCESS_TOKEN", "SHOPEE_REFRESH_TOKEN", "RANGKA_TOKEN")}
     saved = read_tokens(a.token_file)
@@ -840,12 +869,9 @@ def main(argv=None):
         missing.append("SHOPEE_ACCESS_TOKEN")
     if not a.dry_run and not env["RANGKA_TOKEN"]:
         missing.append("RANGKA_TOKEN")
-    if not a.dry_run and not a.rangka:
-        ap.error("--rangka is needed unless --dry-run")
     if missing:
         sys.exit("set " + ", ".join(missing))
-    c = Client(a.api, env["SHOPEE_PARTNER_ID"], env["SHOPEE_PARTNER_KEY"], env["SHOPEE_SHOP_ID"], access, refresh,
-               a.token_file, save=not a.dry_run)
+    c = Client(api, env["SHOPEE_PARTNER_ID"], env["SHOPEE_PARTNER_KEY"], env["SHOPEE_SHOP_ID"], access, refresh, a.token_file)
     try:
         events = collect(c, a.since_days, a.page_size)
     except ShopeeError as e:

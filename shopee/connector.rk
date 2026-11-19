@@ -20,8 +20,10 @@
 # changed ("make a call to the corresponding API"), it carries no lines or money, retries stop after about 3.6 hours,
 # and a missed push is not sent again while the subscription is disabled. order_changed reads every order changed in
 # the last two days (get_order_list by update_time, then get_order_detail per order) and order_settled every escrow
-# released in the last two days. The kernel drops an event whose emitted values did not change (the event key is
-# their hash), so a flow runs once per real change. push_received is a hint only; no flow books from it.
+# released in the last two days. The same order or escrow is emitted again on later polls: the kernel drops an event
+# only when every emitted value is unchanged, and the relay posts every event of the window on every poll, so every
+# flow has the idempotency key of marketplace/README.md ("Flow keys"). After an outage longer than two days, run the
+# relay once with poll --since-days N. push_received is a hint only; no flow books from it.
 #
 # experimental: is not read by the kernel (Juragan proposals/marketplace-connector-runtime.md, parts A to C). Until it
 # lands, shopee/mock/shopee_mock.py poll signs, pages, refreshes and posts each event, in the emit shape below, to the
@@ -129,7 +131,8 @@ triggers:
   # (100 orders changed in two days); the relay follows next_cursor to the end. Fields per marketplace/README.md:
   # the flags come from order_status, lines are Shopee's item_list unchanged (SKU model_sku, else item_sku; quantity
   # model_quantity_purchased; ids item_id, model_id for a stock push). buyer_total is total_amount (shipping paid by the
-  # buyer included), null until paid, like pay_time.
+  # buyer included), null until paid, like pay_time (a COD order is READY_TO_SHIP, so sold, with pay_time null).
+  # TO_RETURN sets no flag: returns are not read in v0.1 and a person books them (marketplace/README.md rule 3).
   - name: order_changed
     label: {id: Pesanan Shopee baru atau berubah}
     via: poll
@@ -156,9 +159,12 @@ triggers:
       lines: item.item_list
   # Every hour: list_settlements (escrows released since two days back) runs first, then get_settlement per order.
   # net is escrow_amount (Shopee's formula: item price minus seller vouchers, plus the buyer's shipping, minus actual
-  # shipping, minus every fee and withheld tax); fees are positive numbers; withheld_tax is withholding_tax (PPh 22,
-  # PMK 37/2025, ID local shops). income is order_income unchanged: campaign_fee, seller_order_processing_fee,
-  # order_ams_commission_fee, protection premiums, shipping and order_adjustment are read from it by the flow.
+  # shipping, minus every fee and withheld tax); adjusted_net is escrow_amount_after_adjustment (net after
+  # order_adjustment[], null when absent), which clears the receivable when present. A fee is a cost when positive; a
+  # negative value refunds it (never the absolute value). withheld_tax is withholding_tax (PPh 22, PMK 37/2025, ID
+  # local shops). income is order_income unchanged: campaign_fee, seller_order_processing_fee, order_ams_commission_fee,
+  # protection premiums, shipping, seller_return_refund and order_adjustment stay in it; the flow books only the named
+  # fees and withheld tax and leaves the rest open on the receivable for a person (marketplace/README.md rule 4).
   # get_escrow_detail has no currency field: a local Indonesian shop is paid in IDR.
   - name: order_settled
     label: {id: Dana pesanan Shopee cair}
@@ -175,6 +181,7 @@ triggers:
       currency: "'IDR'"
       settled_at: escrow.escrow_release_time
       net: item.order_income.escrow_amount
+      adjusted_net: item.order_income.escrow_amount_after_adjustment
       commission_fee: item.order_income.commission_fee
       service_fee: item.order_income.service_fee
       transaction_fee: item.order_income.seller_transaction_fee
@@ -263,8 +270,11 @@ actions:
     allow_secret_in: [query]
   # POST v2.product.update_stock: sets the seller stock of one model of one item to an absolute number (Rangka is the
   # master of stock; never a delta). model_id 0 for an item without variations; no location_id for a shop without
-  # warehouses. Shopee refuses a stock below the stock reserved for a promotion. as_of (the time or revision of the
-  # stock figure) keeps a later push of a quantity sent before (5, then 3, then 5 again) from being taken for a repeat.
+  # warehouses. Shopee refuses a stock below the stock reserved for a promotion. The quantity is the available stock
+  # of marketplace/README.md rule 1, pushed after a staging or a stock change in Rangka, never on a timer alone.
+  # revision (required: the sequence of the stock change in Rangka) is in the idempotency key, so a later push of a
+  # quantity sent before (5, then 3, then 5 again) is sent, while the same push repeated is sent once. A partial
+  # failure answers success with failure_list: a flow treats a non-empty failures as a failed push and tells the owner.
   - name: update_stock
     label: {id: Kirim stok ke Shopee}
     request:
@@ -284,10 +294,10 @@ actions:
       - {name: item_id, type: int, required: true, help: {id: item_id Shopee dari baris pesanan atau daftar produk}}
       - {name: model_id, type: int, default: '0', help: {id: '0 untuk produk tanpa variasi'}}
       - {name: stock, type: int, required: true, help: {id: 'Stok tersedia, angka mutlak'}}
-      - {name: as_of, type: data, default: "''", help: {id: 'Waktu atau revisi angka stok ini'}}
+      - {name: revision, type: data, required: true, help: {id: 'Urutan perubahan stok di Rangka, misalnya id atau waktu gerak stok terakhir, supaya jumlah yang sama bisa dikirim lagi setelah ada perubahan'}}
     output: {success: response.success_list, failures: response.failure_list}
     retry: {max: 5, backoff: exponential, on: [429, 500, 502, 503]}
-    idempotency: string(input.item_id) + ':' + string(input.model_id) + ':' + string(input.stock) + ':' + input.as_of
+    idempotency: string(input.item_id) + ':' + string(input.model_id) + ':' + string(input.stock) + ':' + input.revision
     allow_secret_in: [query]
   # GET v2.logistics.get_tracking_number: empty until the 3PL has given one.
   - name: get_tracking

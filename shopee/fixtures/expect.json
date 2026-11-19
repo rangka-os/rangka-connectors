@@ -80,6 +80,7 @@
     "currency": "IDR",
     "settled_at": 1794965400,
     "net": 64295,
+    "adjusted_net": 64295,
     "commission_fee": 6320,
     "service_fee": 3160,
     "transaction_fee": 1580,

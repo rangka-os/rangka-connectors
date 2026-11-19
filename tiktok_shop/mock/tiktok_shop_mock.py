@@ -9,7 +9,8 @@ proposals/marketplace-connector-runtime.md). For demos and tests without a TikTo
     TIKTOK_SHOP_APP_KEY=demo-app-key TIKTOK_SHOP_APP_SECRET=tts-test-dummy-secret \
     TIKTOK_SHOP_SHOP_CIPHER=ROW_TahuContohDemoCipher0001 TIKTOK_SHOP_ACCESS_TOKEN=... TIKTOK_SHOP_REFRESH_TOKEN=... \
     RANGKA_TOKEN=... python3 tiktok_shop/mock/tiktok_shop_mock.py poll --api http://127.0.0.1:8931 \
-        --auth-api http://127.0.0.1:8931 --rangka http://127.0.0.1:8101 [--dry-run] [--token-file tts-tokens.json]
+        --auth-api http://127.0.0.1:8931 --rangka http://127.0.0.1:8101 --token-file tts-tokens.json [--dry-run] \
+        [--since-days 2] [--settled-days 7]
 
 Dummy keys only. The mock signs any webhook it is asked for (/simulate/*), without authentication: it is a signing
 oracle for its secret. So it listens on 127.0.0.1 only, reads the secret from TIKTOK_SHOP_MOCK_APP_SECRET (not argv,
@@ -46,11 +47,18 @@ dropped from every fixture before it is served. Fixture times are moved by whole
 the last 24 hours (--keep-times turns this off), so the two-day poll window always finds them.
 
 poll reads the API the way the kernel's triggers order_changed and order_settled will: it signs every request, pages
-over next_page_token, refreshes once on 105002 and sends the call again, reads the paid statements and their
-transactions, builds each event with exactly the keys the triggers emit, and posts it to the tenant's flow
-tiktok_shop_order_staged or tiktok_shop_order_settled (POST /api/v1/flows/<name>/run with RANGKA_TOKEN), as
-moka_mock.py poll does. A rotated token pair is written to --token-file (mode 0600) whenever a refresh happened, also
-on --dry-run: TikTok has already rotated it, and losing it means the owner must authorize again.
+over next_page_token (orders, statements and statement transactions), refreshes once on 105002 and sends the call
+again, reads the paid statements and their transactions, builds each event with exactly the keys the triggers emit,
+and posts it to the tenant's flow tiktok_shop_order_staged or tiktok_shop_order_settled (POST
+/api/v1/flows/<name>/run with RANGKA_TOKEN), as moka_mock.py poll does. A rotated token pair is written to
+--token-file (mode 0600) whenever a refresh happened, also on --dry-run: TikTok has already rotated it, and losing it
+means the owner must authorize again. A run that posts refuses to start without --token-file.
+The app secret and tokens go only over https to the hosts of connector.rk (open-api.tiktokglobalshop.com,
+auth.tiktok-shops.com), or plain http to 127.0.0.1 or localhost (the mock), for --api and --auth-api alike;
+RANGKA_TOKEN goes only over https, or plain http to 127.0.0.1 or localhost. Both are checked before any request.
+Each poll reads a fixed window and keeps no cursor: after an outage longer than the window (relay off, kernel down,
+token expired) run poll --since-days N --settled-days N once, N covering the outage. The flows' idempotency keys
+(marketplace/README.md, "Flow keys") make the overlap and the repeated events of every poll harmless.
 
 Synthetic data only. Stdlib only.
 """
@@ -74,6 +82,8 @@ import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+HOSTS = ("open-api.tiktokglobalshop.com", "auth.tiktok-shops.com")   # hosts: of tiktok_shop/connector.rk
+LOCAL = ("127.0.0.1", "localhost", "::1")
 API_PREFIXES = ("/authorization/", "/order/", "/finance/", "/product/", "/fulfillment/")
 BUYER_KEYS = ("recipient_address", "buyer_nickname", "buyer_email", "buyer_message", "user_id")
 # the flag table of marketplace/README.md, column tiktok_shop (status of the order API)
@@ -125,7 +135,7 @@ def settled_event(statement: dict, t: dict) -> dict:
     fee, tax = ftb.get("fee") or {}, ftb.get("tax") or {}
     return {
         "channel": "tiktok_shop", "order_id": t.get("order_id"), "currency": statement.get("currency"),
-        "settled_at": statement.get("payment_time"), "net": t.get("settlement_amount"),
+        "settled_at": statement.get("payment_time"), "net": t.get("settlement_amount"), "adjusted_net": None,
         "commission_fee": fee.get("platform_commission_amount"), "service_fee": None,
         "transaction_fee": fee.get("transaction_fee_amount"), "withheld_tax": tax.get("article_22_income_tax_withheld"),
         "income": t,
@@ -590,11 +600,28 @@ class TikTokError(Exception):
         self.code = code
 
 
+def check_api(url: str, flag: str = "--api") -> str:
+    """A base URL the relay may send the app secret and tokens to: https to a host of connector.rk, or plain http to
+    this machine (the mock)."""
+    u = urllib.parse.urlsplit(url or "")
+    if (u.scheme == "https" and u.hostname in HOSTS) or (u.scheme == "http" and u.hostname in LOCAL):
+        return url.rstrip("/")
+    raise SystemExit(f"{flag} must be https://{HOSTS[0]}, https://{HOSTS[1]} or http://127.0.0.1:<port> (the mock)")
+
+
+def check_rangka(rangka: str) -> str:
+    """The kernel URL the relay may send RANGKA_TOKEN to: https, or plain http to this machine."""
+    u = urllib.parse.urlsplit(rangka or "")
+    if (u.scheme == "https" and u.hostname) or (u.scheme == "http" and u.hostname in LOCAL):
+        return rangka.rstrip("/")
+    raise SystemExit("--rangka must be https://<kernel> or http://127.0.0.1:<port>: RANGKA_TOKEN never goes over plain http to another machine")
+
+
 class Client:
     """Signs, sends, refreshes once on 105002 and sends the call again. Never logs a secret or a token."""
 
     def __init__(self, api: str, auth_api: str, creds: dict, token_file: str | None = None):
-        self.api, self.auth_api = api.rstrip("/"), auth_api.rstrip("/")
+        self.api, self.auth_api = check_api(api, "--api"), check_api(auth_api, "--auth-api")
         self.c = dict(creds)
         self.token_file = token_file
         self.refreshed = False
@@ -679,9 +706,11 @@ def collect(client: Client, since_days: int = 2, settled_days: int = 7, page_siz
                            {"page_size": page_size, "sort_field": "update_time", "sort_order": "ASC"},
                            {"update_time_ge": midnight - since_days * 86400}, "orders"):
         out += [(FLOW_STAGED, order_event(o)) for o in orders]
-    statements = client.call("GET", "/finance/202309/statements", {"sort_field": "statement_time", "page_size": 100,
-                                                                  "statement_time_ge": midnight - settled_days * 86400,
-                                                                  "payment_status": "PAID"}).get("statements") or []
+    statements = []
+    for _, rows in pages(client, "GET", "/finance/202309/statements", {"sort_field": "statement_time", "page_size": 100,
+                                                                       "statement_time_ge": midnight - settled_days * 86400,
+                                                                       "payment_status": "PAID"}, None, "statements"):
+        statements += [s for s in rows if s["id"] not in {x["id"] for x in statements}]
     for s in statements:
         for _, txs in pages(client, "GET", f"/finance/202501/statements/{s['id']}/statement_transactions",
                             {"sort_field": "order_create_time", "page_size": page_size}, None, "transactions"):
@@ -733,7 +762,8 @@ def main(argv=None):
     p.add_argument("--since-days", type=int, default=2)
     p.add_argument("--settled-days", type=int, default=7)
     p.add_argument("--page-size", type=int, default=50)
-    p.add_argument("--token-file", help="JSON file (0600) holding the rotated tokens; read first when it exists")
+    p.add_argument("--token-file", help="JSON file (0600) holding the rotated tokens; read first when it exists; "
+                   "needed unless --dry-run")
     a = ap.parse_args(argv)
     if a.cmd == "serve":
         secret = os.environ.get("TIKTOK_SHOP_MOCK_APP_SECRET", "")
@@ -751,6 +781,14 @@ def main(argv=None):
         except KeyboardInterrupt:
             pass
         return 0
+    # hosts first: nothing is sent anywhere before every address is allowed
+    check_api(a.api, "--api")
+    check_api(a.auth_api, "--auth-api")
+    if not a.dry_run:
+        if a.rangka:
+            check_rangka(a.rangka)
+        if not a.token_file:
+            ap.error("--token-file is needed unless --dry-run: TikTok Shop rotates the token pair on a refresh")
     creds = creds_from_env(a.token_file)
     missing = [k for k in ("app_key", "app_secret", "shop_cipher", "access_token") if not creds[k]]
     if missing:

@@ -6,6 +6,8 @@ data, and reach the flows the way moka_mock.py poll sends them. Stdlib only, no 
 
     python3 tests/check_tiktok_shop_mock.py
 """
+import contextlib
+import io
 import json
 import os
 import re
@@ -258,7 +260,8 @@ check("a second identical poll gives identical events", r2.returncode == 0 and l
 
 # 8. poll posting to a stub of the flows endpoint: bearer token, one request per event
 env_post = dict(env, RANGKA_TOKEN="rk-demo-token")
-r = subprocess.run([sys.executable, m.__file__, "poll", "--api", base, "--auth-api", base, "--rangka", hook_base], capture_output=True,
+r = subprocess.run([sys.executable, m.__file__, "poll", "--api", base, "--auth-api", base, "--rangka", hook_base,
+                    "--token-file", os.path.join(tmp, "post-tokens.json")], capture_output=True,
                    text=True, env=env_post, timeout=60)
 res = json.loads(r.stdout or "{}")
 check("poll posts one request per event to /api/v1/flows/<name>/run with the bearer token",
@@ -341,6 +344,74 @@ _, bad_wh = raw_call("POST", f"/product/202309/products/{pid}/inventory/update",
                      body={"skus": [{"id": sid, "inventory": [{"warehouse_id": "999", "quantity": 1}]}]}, token=TOKEN)
 check("an unknown warehouse is a partial failure: code 0 with data.errors 12052097",
       bad_wh["code"] == 0 and bad_wh["data"]["errors"][0]["code"] == 12052097 and qty() == 3, bad_wh)
+
+spec_text = open(os.path.join(ROOT, "tiktok_shop", "connector.rk")).read()
+stock_block = spec_text.split("  - name: update_stock\n", 1)[1].split("\n  - name: ", 1)[0]
+check("spec update_stock: revision is a required input and ends the idempotency key; output failures = data.errors",
+      re.search(r"\{name: revision, type: data, required: true", stock_block) is not None
+      and "idempotency: input.product_id + ':' + input.sku_id + ':' + input.warehouse_id + ':' + string(input.quantity) + ':' + input.revision\n"
+      in stock_block + "\n" and "output: {failures: data.errors}" in stock_block, stock_block[-600:])
+stock_keys = [f"{pid}:{sid}::{n}:{rev}" for n, rev in ((3, "mv-1"), (5, "mv-2"), (3, "mv-3"), (3, "mv-3"))]
+check("stock keys: 3, 5, 3 again after two changes are three keys; a repeated push is one", len(set(stock_keys)) == 3, stock_keys)
+
+# 10b. statements are paged too (QA: the relay follows every page of statements, not only the first)
+pstate = m.State(FX, APP_KEY, SECRET, ACCESS, REFRESH, max_page_size=1)
+done = next(o for o in pstate.orders.values() if o["status"] == "COMPLETED")
+pstate.settle(done)
+pstate.settle(done)
+psrv = ThreadingHTTPServer(("127.0.0.1", 0), m.handler(pstate))
+threading.Thread(target=psrv.serve_forever, daemon=True).start()
+pbase = f"http://127.0.0.1:{psrv.server_address[1]}"
+pev = m.collect(m.Client(pbase, pbase, {"app_key": APP_KEY, "app_secret": SECRET, "shop_cipher": CIPHER, "access_token": ACCESS,
+                                         "refresh_token": REFRESH}), page_size=1)
+st_calls = [c for c in pstate.calls if c["path"] == "/finance/202309/statements"]
+check("statements paged one per page: every paid statement read once (3 statements, 3 statement pages)",
+      sum(f == m.FLOW_SETTLED for f, _ in pev) == len(pstate.statements) == 3 and len(st_calls) == 3, (len(pev), len(st_calls)))
+check("settlement events carry adjusted_net null (TikTok reports adjustments as their own records)",
+      all(e["adjusted_net"] is None for f, e in pev if f == m.FLOW_SETTLED))
+
+# 10c. the relay checks every address before it sends anything: urlopen is replaced by a recorder for these runs
+sent = []
+real_urlopen = m.urllib.request.urlopen
+m.urllib.request.urlopen = lambda req, *a, **k: sent.append(getattr(req, "full_url", req)) or (_ for _ in ()).throw(OSError("blocked"))
+saved_env = dict(os.environ)
+os.environ.update(env_post)
+
+
+def refused(args):
+    try:
+        with contextlib.redirect_stderr(io.StringIO()):
+            m.main(args)
+        return False
+    except SystemExit as e:
+        return e.code not in (0, None)
+
+
+tf = os.path.join(tmp, "relay.json")
+try:
+    h1 = refused(["poll", "--api", "https://attacker.example", "--auth-api", base, "--dry-run"])
+    h2 = refused(["poll", "--api", "http://203.0.113.5:80", "--auth-api", base, "--dry-run"])
+    h3 = refused(["poll", "--api", base, "--auth-api", "http://203.0.113.5:80", "--dry-run"])
+    h4 = refused(["poll", "--api", base, "--auth-api", "https://auth.tiktok-shops.com.attacker.example", "--dry-run"])
+    h5 = refused(["poll", "--api", base, "--auth-api", base, "--rangka", "http://203.0.113.9:8101", "--token-file", tf])
+    h6 = refused(["poll", "--api", base, "--auth-api", base, "--rangka", hook_base])
+    try:
+        m.Client("https://attacker.example", base, {})
+        h7 = False
+    except SystemExit:
+        h7 = True
+finally:
+    m.urllib.request.urlopen = real_urlopen
+    os.environ.clear()
+    os.environ.update(saved_env)
+check("relay: --api or --auth-api outside connector.rk's hosts (https or plain http) is refused before any request is sent",
+      h1 and h2 and h3 and h4 and h7 and not sent, (h1, h2, h3, h4, h7, sent))
+check("relay: RANGKA_TOKEN over plain http to another machine is refused before any request is sent", h5 and not sent, sent)
+check("relay: a run that posts refuses to start without --token-file", h6 and not sent, sent)
+check("relay: the vendor's hosts over https and this machine over http are allowed",
+      m.check_api("https://open-api.tiktokglobalshop.com/") == "https://open-api.tiktokglobalshop.com"
+      and m.check_api("https://auth.tiktok-shops.com", "--auth-api") == "https://auth.tiktok-shops.com"
+      and m.check_rangka("https://rangka.example") == "https://rangka.example" and m.check_rangka("http://localhost:8101"))
 
 # 11. the mock takes dummy secrets only, from the environment
 check("only dummy secrets", m.dummy_key(SECRET) and m.dummy_key("x.TEST.y") and not m.dummy_key("e59af819cc")
