@@ -1,0 +1,141 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/connector.json
+# WhatsApp from Rangka Cloud: a host connector (rangka-os contract 0063 §2 and §7). The business gets its own
+# WhatsApp number under Rangka's Meta setup; the owner signs up with nobody and enters no key.
+# - Every auth field is written by the host with a secrets:host token. A kernel serves this connector only when
+#   whoever runs it names it in RANGKA_HOST_CONNECTORS; a self-hosted kernel uses `whatsapp_business` instead.
+# - Sends go to the host's relay, never to Meta (option B of the WhatsApp plan): the relay checks the kill switch,
+#   the service's state, the message type, the template's approval, the customer's opt-out and the caps before it
+#   asks Meta, and sends a key once. What the kernel holds works for this business only and is not Meta's.
+# - Events come from the host, signed with this business's own key: delivery statuses (and refusals, as status
+#   failed with the relay's code), inbound messages, and opt-outs.
+# README.md has the refusal codes; fixtures/ are synthetic.
+name: rangka_whatsapp
+label: {id: WhatsApp dari Rangka Cloud, en: WhatsApp from Rangka Cloud}
+summary:
+  id: Kirim struk, pengingat tagihan dan kabar pesanan ke pelanggan dari nomor WhatsApp bisnismu yang disediakan Rangka Cloud.
+  en: Send receipts, payment reminders and order updates to customers from the WhatsApp number Rangka Cloud provides for your business.
+category: messaging
+icon: send-plane-line
+version: 0.1.0
+vendor: Rangka Cloud
+docs: https://github.com/rangka-os/rangka-connectors/blob/main/rangka_whatsapp/README.md
+# The host's public service address. A placeholder under the reserved .example domain until Rangka Cloud has one:
+# no bearer can leave for a real host before this line names it (rangka-os contract 0017 §5).
+hosts: [cloud.rangka.example]
+experimental:
+  provided_by: host
+auth:
+  type: token
+  fields:
+    - name: api_host
+      label: {id: Alamat layanan Rangka Cloud, en: Rangka Cloud service host}
+    - name: service_token
+      label: {id: Token layanan, en: Service token}
+      secret: true
+    - name: webhook_key
+      label: {id: Kunci tanda tangan kabar, en: Event signing key}
+      secret: true
+triggers:
+  # What happened to a message this business sent: sent, delivered, read or failed. A send the host refused
+  # arrives as failed with the refusal's code in `error` and no message_id. `idempotency_key` is the key the flow
+  # sent, so the flow finds its document without knowing any id of Meta's.
+  - name: message_status
+    label: {id: Status pesan terkirim, en: Sent message status}
+    via: webhook
+    verify:
+      signature:
+        header: X-Rangka-Signature
+        prefix: sha256=
+        alg: hmac-sha256
+        key: auth.webhook_key
+    emit:
+      message_id: message_id
+      idempotency_key: idempotency_key
+      type: type
+      status: status
+      at: at
+      error: error
+  # A customer wrote to the number. The number only sends (phase 1), so this is for the business to see.
+  - name: message_received
+    label: {id: Pesan masuk, en: Incoming message}
+    via: webhook
+    verify:
+      signature:
+        header: X-Rangka-Signature
+        prefix: sha256=
+        alg: hmac-sha256
+        key: auth.webhook_key
+    emit:
+      message_id: message_id
+      from: from
+      text: text
+      profile_name: profile_name
+      at: at
+  # A customer asked to stop (they replied BERHENTI or STOP, or Meta reported a block). The host already refuses
+  # sends to them; the flow marks the customer so staff see it.
+  - name: opted_out
+    label: {id: Pelanggan minta berhenti, en: Customer opted out}
+    via: webhook
+    verify:
+      signature:
+        header: X-Rangka-Signature
+        prefix: sha256=
+        alg: hmac-sha256
+        key: auth.webhook_key
+    emit:
+      phone: phone
+      at: at
+      source: source
+actions:
+  - name: send_template
+    label: {id: Kirim pesan template, en: Send a template message}
+    request:
+      method: POST
+      url: https://{auth.api_host}/svc/whatsapp/v1/messages
+      headers: {Authorization: 'Bearer {auth.service_token}'}
+      body:
+        to: '{input.to}'
+        template: '{input.template}'
+        type: '{input.type}'
+        components: '{input.components}'
+        idempotency_key: '{input.idempotency_key}'
+    input:
+      - {name: to, type: phone, required: true}
+      - {name: template, type: data, required: true}
+      # receipt | reminder | order_ready | appointment: which of the business's message types this is
+      - {name: type, type: data, required: true}
+      - {name: components, type: json}
+      # <document>:<type>:<step>, e.g. STRK-KPI-2611-00142:receipt:1. The same key is sent once, by the kernel
+      # (the job's unique key) and again by the host.
+      - {name: idempotency_key, type: data, required: true}
+    output:
+      message_id: message_id
+      status: status
+    # Only rate_limited (429) and a host or Meta outage (5xx) are worth another try. Every other refusal is final:
+    # recipient_opted_out, template_not_approved, service_stopped, service_paused, quota_exceeded, send_failed.
+    retry:
+      max: 5
+      backoff: exponential
+      on: [429, 500, 502, 503, 504]
+    idempotency: input.idempotency_key
+  # The business marked a customer "Tidak mau dikirimi WA". It only ever adds to the host's list: a customer comes
+  # off it by their own action, never by a call from here.
+  - name: set_opt_out
+    label: {id: Catat pelanggan yang tidak mau dikirimi WA, en: Record a customer who opted out}
+    request:
+      method: POST
+      url: https://{auth.api_host}/svc/whatsapp/v1/opt-outs
+      headers: {Authorization: 'Bearer {auth.service_token}'}
+      body:
+        phone: '{input.phone}'
+    input:
+      - {name: phone, type: phone, required: true}
+    output:
+      status: status
+    retry:
+      max: 5
+      backoff: exponential
+      on: [429, 500, 502, 503, 504]
+limits:
+  rate: The host throttles each number below Meta's limit and caps each business per day
+  note: {id: 'Biaya per pesan: belum ditetapkan', en: 'Fee per message: not set yet'}
