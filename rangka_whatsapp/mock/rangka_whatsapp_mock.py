@@ -70,17 +70,22 @@ def is_dummy(value: str) -> bool:
 
 
 def normalize_phone(s) -> str | None:
-    """'0812-0000-0001', '62812…', '+62 812…' -> '+6281200000001'; None when it is not a phone."""
+    """Rangka Cloud's rule: '0812-0000-0001', '812 0000 0001', '62812…', '+62 0812…' -> '+6281200000001'; with a plus
+    the country code is as written; None when it is not a phone."""
     s = str(s or "").strip()
     plus = s.startswith("+")
     if not re.fullmatch(r"\+?[0-9 .()\-]+", s):
         return None
     d = re.sub(r"[^0-9]", "", s)
     if not plus:
-        if d.startswith("00"):
+        if d.startswith("8"):
+            d = "62" + d
+        elif d.startswith("00"):
             d = d[2:]
         elif d.startswith("0"):
             d = "62" + d[1:]
+    if d.startswith("620"):
+        d = "62" + d[3:]
     if not 8 <= len(d) <= 15 or d.startswith("0"):
         return None
     return "+" + d

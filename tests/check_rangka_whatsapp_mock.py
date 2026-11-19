@@ -237,7 +237,11 @@ def main():
             check("a key that is not a dummy is refused", False, bad)
         except ValueError:
             check("a key that is not a dummy is refused", True)
-    for raw, want in (("0812-0000-0001", "+6281200000001"), ("6281200000001", "+6281200000001"), ("+62 812 0000 0001", "+6281200000001"), ("abc", None), ("0812", None)):
+    # the vectors of rangka-cloud TestPhoneRuleVectors and rangka-apps PHONE_VECTORS
+    for raw, want in (("0812-0000-0001", "+6281200000001"), ("6281200000001", "+6281200000001"), ("+62 812 0000 0001", "+6281200000001"),
+                      ("812-3456-7890", "+6281234567890"), ("+62 0812 3456 7890", "+6281234567890"), ("620812 3456 7890", "+6281234567890"),
+                      ("0062 812 3456 7890", "+6281234567890"), ("+81 3 1234 5678", "+81312345678"), ("0081 3 1234 5678", "+81312345678"),
+                      ("abc", None), ("0812", None)):
         check(f"phone {raw!r} normalises to {want!r}", m.normalize_phone(raw) == want, m.normalize_phone(raw))
 
     srv.shutdown()
