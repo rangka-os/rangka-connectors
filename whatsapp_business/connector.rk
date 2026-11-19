@@ -6,9 +6,11 @@ summary:
   en: Receive customer messages and send template messages through WhatsApp Business.
 category: messaging
 icon: whatsapp-line
-version: 1.0.0
+version: 1.0.1
 vendor: Meta WhatsApp Cloud API
 docs: https://developers.facebook.com/docs/whatsapp/cloud-api
+# The only host a request with the owner's access token may go to (rangka-os contract 0017 §5).
+hosts: [graph.facebook.com]
 auth:
   type: token
   fields:
