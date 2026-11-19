@@ -1,0 +1,349 @@
+# yaml-language-server: $schema=https://rangka-os.github.io/rangka-os/schema/0.5/connector.json
+# Shopee Open Platform (Open API v2): orders, settlements (escrow) and stock of one Shopee shop, for the shared
+# marketplace mapping of this repository (marketplace/README.md: events, flags, lines, rules).
+# Status: spec, no account used. Paths and fields follow Shopee's public API reference and developer guides as read on
+# 19 Nov 2026 (open.shopee.com, developer-guide/16, 18, 20, 31, 223, 229 and the v2.* API pages); to confirm in the
+# sandbox (openplatform.sandbox.test-stable.shopee.sg) once a test partner exists. Research and sources: Juragan's
+# research_notes/Marketplace connector APIs Indonesia/shopee.md and reports/keputusan-riset/marketplace-connectors.md.
+# fixtures/ are synthetic: an invented demo shop (shop_id 880001) selling the SKUs of moka/fixtures (TH-ORI, TH-PDS).
+#
+# Signing: every call carries partner_id, timestamp (Unix seconds, valid 5 minutes) and sign in the query string. sign
+# is lower-case hex HMAC-SHA256, key partner_key, over a plain concatenation with no separator:
+#   shop calls:   partner_id + path + timestamp + access_token + shop_id
+#   token calls:  partner_id + path + timestamp                 (public)
+# The access token lives 4 hours and travels in the query (allow_secret_in: [query]); the refresh token lives 30 days
+# and rotates on every refresh (the old one replays the same new pair for 4 hours, then expires). The kernel signs in a
+# header over lines and refreshes with the OAuth form, so it cannot call Shopee yet: experimental.sign and
+# experimental.refresh below say what it must do.
+#
+# Why polling is the main path: a Shopee push (code 3 order status, code 4 tracking number) only says that something
+# changed ("make a call to the corresponding API"), it carries no lines or money, retries stop after about 3.6 hours,
+# and a missed push is not sent again while the subscription is disabled. order_changed reads every order changed in
+# the last two days (get_order_list by update_time, then get_order_detail per order) and order_settled every escrow
+# released in the last two days. The kernel drops an event whose emitted values did not change (the event key is
+# their hash), so a flow runs once per real change. push_received is a hint only; no flow books from it.
+#
+# experimental: is not read by the kernel (Juragan proposals/marketplace-connector-runtime.md, parts A to C). Until it
+# lands, shopee/mock/shopee_mock.py poll signs, pages, refreshes and posts each event, in the emit shape below, to the
+# tenant's flows shopee_order_staged and shopee_order_settled.
+#
+# One shop per company: the keys and tokens below are those of one shop (rule 8 of marketplace/README.md).
+# No buyer data: get_order_detail never asks for recipient_address, buyer_username or buyer_user_id, the escrow's
+# buyer_user_name is never read, and no event carries a buyer's name, phone or address (Shopee masks them and allows
+# personal data to be kept 90 days at most).
+name: shopee
+label: {id: Shopee}
+summary:
+  id: Ambil pesanan dan pencairan dana Shopee, kirim stok ke Shopee.
+  en: Pull Shopee orders and settlements, push stock to Shopee.
+category: sales
+icon: shopping-bag-3-line
+version: 0.1.0
+vendor: Shopee
+docs: https://open.shopee.com/developer-guide/16
+hosts: [partner.shopeemobile.com, openplatform.sandbox.test-stable.shopee.sg]
+auth:
+  type: hmac
+  fields:
+    - name: partner_id
+      label: {id: Partner ID}
+      required: true
+      help: {id: 'Shopee Open Platform > App List. Partner ID uji untuk sandbox, Partner ID live untuk toko nyata'}
+    - name: partner_key
+      label: {id: Partner key}
+      secret: true
+      required: true
+      help: {id: 'Shopee Open Platform > App List, pasangan dari Partner ID'}
+    - name: api_host
+      label: {id: Server Shopee}
+      required: true
+      help: {id: 'openplatform.sandbox.test-stable.shopee.sg untuk uji, partner.shopeemobile.com untuk toko nyata'}
+    - name: shop_id
+      label: {id: Shop ID}
+      required: true
+      help: {id: 'Didapat setelah pemilik toko menyetujui akses (satu toko per perusahaan)'}
+    - name: access_token
+      label: {id: Access token}
+      secret: true
+      required: true
+      help: {id: Berlaku 4 jam dan diperbarui otomatis}
+    - name: refresh_token
+      label: {id: Refresh token}
+      secret: true
+      help: {id: 'Berlaku 30 hari, berganti setiap kali dipakai'}
+experimental:
+  # Not read by the kernel yet (Juragan proposals/marketplace-connector-runtime.md): until then
+  # shopee/mock/shopee_mock.py poll signs and refreshes.
+  # Part A: the signature goes into the query (param sign), next to the timestamp it covers. Every action below is a
+  # shop call (base); only the refresh is public (base_public).
+  sign:
+    in: query
+    param: sign
+    alg: hmac-sha256
+    key: partner_key
+    encoding: hex
+    timestamp: {param: timestamp, unit: seconds}
+    base: '{auth.partner_id}{request.target}{request.epoch}{auth.access_token}{auth.shop_id}'
+    base_public: '{auth.partner_id}{request.target}{request.epoch}'
+  # Part C: Shopee's own refresh (a signed JSON POST). The rotated refresh_token is written before the new access token
+  # is used: losing it after the 4 hour replay window means the owner must approve access again. The previous access
+  # token stays valid 5 minutes after a refresh. The authorization itself ends after the period the seller chose (7 to
+  # 365 days): then needs_auth.
+  refresh:
+    request:
+      method: POST
+      url: https://{auth.api_host}/api/v2/auth/access_token/get
+      query: {partner_id: '{auth.partner_id}'}
+      body: {shop_id: '{auth.shop_id}', refresh_token: '{auth.refresh_token}', partner_id: '{auth.partner_id}'}
+    public: true
+    output: {access_token: access_token, refresh_token: refresh_token, expires_in: expire_in}
+    before: 10m
+    on_error: [error_auth, invalid_acceess_token]
+triggers:
+  # A hint that an order changed or got a tracking number. Shopee posts one callback URL per app with
+  # Authorization = hex HMAC-SHA256(partner_key, <callback url> + '|' + <raw body>) and wants an empty 2xx within 3
+  # seconds. The kernel ignores verify.signature.payload today, computes the HMAC over the raw body only, and so refuses
+  # every push with 401: it fails closed (proposal part B). Orders still arrive through order_changed.
+  # Code 3: data{ordersn, status, completed_scenario, update_time}; code 4: data{ordersn, package_number, tracking_no}
+  # (no status or update_time: emitted as null). Other codes (1, 2, 12 authorization, 8 reserved stock, ...) emit
+  # order_id null.
+  - name: push_received
+    label: {id: Kabar dari Shopee}
+    via: webhook
+    verify:
+      signature:
+        header: Authorization
+        alg: hmac-sha256
+        key: partner_key
+        encoding: hex
+        payload: '{request.url}|{request.body}'
+    emit:
+      shop_id: shop_id
+      code: code
+      order_id: data.ordersn
+      status: data.status
+      updated_at: data.update_time
+      sent_at: timestamp
+  # Every 10 minutes: list_orders (orders changed since two days back, by update_time) runs first, then
+  # get_order_detail once per order (proposal part E would batch 50). The kernel reads the first page of list_orders
+  # (100 orders changed in two days); the relay follows next_cursor to the end. Fields per marketplace/README.md:
+  # the flags come from order_status, lines are Shopee's item_list unchanged (SKU model_sku, else item_sku; quantity
+  # model_quantity_purchased; ids item_id, model_id for a stock push). buyer_total is total_amount (shipping paid by the
+  # buyer included), null until paid, like pay_time.
+  - name: order_changed
+    label: {id: Pesanan Shopee baru atau berubah}
+    via: poll
+    every: 10m
+    action: get_order_detail
+    each: {action: list_orders, items: orders, as: order, key: order.order_sn}
+    input:
+      order_sn_list: order.order_sn
+    for_each: orders[]
+    emit:
+      channel: "'shopee'"
+      storefront: "'SHOPEE'"
+      order_id: item.order_sn
+      status: item.order_status
+      sold: "item.order_status == 'READY_TO_SHIP' || item.order_status == 'PROCESSED' || item.order_status == 'RETRY_SHIP' || item.order_status == 'SHIPPED' || item.order_status == 'TO_CONFIRM_RECEIVE' || item.order_status == 'COMPLETED'"
+      shipped: "item.order_status == 'SHIPPED' || item.order_status == 'TO_CONFIRM_RECEIVE' || item.order_status == 'COMPLETED'"
+      completed: "item.order_status == 'COMPLETED'"
+      cancelled: "item.order_status == 'CANCELLED'"
+      created_at: item.create_time
+      paid_at: item.pay_time
+      updated_at: item.update_time
+      currency: item.currency
+      buyer_total: item.total_amount
+      lines: item.item_list
+  # Every hour: list_settlements (escrows released since two days back) runs first, then get_settlement per order.
+  # net is escrow_amount (Shopee's formula: item price minus seller vouchers, plus the buyer's shipping, minus actual
+  # shipping, minus every fee and withheld tax); fees are positive numbers; withheld_tax is withholding_tax (PPh 22,
+  # PMK 37/2025, ID local shops). income is order_income unchanged: campaign_fee, seller_order_processing_fee,
+  # order_ams_commission_fee, protection premiums, shipping and order_adjustment are read from it by the flow.
+  # get_escrow_detail has no currency field: a local Indonesian shop is paid in IDR.
+  - name: order_settled
+    label: {id: Dana pesanan Shopee cair}
+    via: poll
+    every: 1h
+    action: get_settlement
+    each: {action: list_settlements, items: escrows, as: escrow, key: escrow.order_sn}
+    input:
+      order_sn: escrow.order_sn
+    for_each: settlement
+    emit:
+      channel: "'shopee'"
+      order_id: item.order_sn
+      currency: "'IDR'"
+      settled_at: escrow.escrow_release_time
+      net: item.order_income.escrow_amount
+      commission_fee: item.order_income.commission_fee
+      service_fee: item.order_income.service_fee
+      transaction_fee: item.order_income.seller_transaction_fee
+      withheld_tax: item.order_income.withholding_tax
+      income: item.order_income
+actions:
+  # GET v2.order.get_order_list: a window of at most 15 days, page_size 1 to 100, next page by cursor (next_cursor is
+  # empty when more is false). The defaults cover two days back to tomorrow (UTC days), so the kernel can call it
+  # without input (each:).
+  - name: list_orders
+    label: {id: Daftar pesanan berubah}
+    request:
+      method: GET
+      url: https://{auth.api_host}/api/v2/order/get_order_list
+      query:
+        partner_id: '{auth.partner_id}'
+        shop_id: '{auth.shop_id}'
+        access_token: '{auth.access_token}'
+        time_range_field: update_time
+        time_from: '{input.time_from}'
+        time_to: '{input.time_to}'
+        page_size: '100'
+        cursor: '{input.cursor}'
+        response_optional_fields: order_status
+    input:
+      - {name: time_from, type: int, default: "(days_between('1970-01-01', today()) - 2) * 86400", help: {id: 'Detik epoch (UTC)'}}
+      - {name: time_to, type: int, default: "(days_between('1970-01-01', today()) + 1) * 86400", help: {id: 'Detik epoch (UTC), paling jauh 15 hari dari time_from'}}
+      - {name: cursor, type: data, help: {id: 'next_cursor dari halaman sebelumnya'}}
+    output: {orders: response.order_list, more: response.more, next: response.next_cursor}
+    retry: {max: 5, backoff: exponential, on: [429, 500, 502, 503]}
+    allow_secret_in: [query]
+  # GET v2.order.get_order_detail: 1 to 50 order numbers (comma-separated). Only the optional fields named here come
+  # back; never recipient_address, buyer_username or buyer_user_id.
+  - name: get_order_detail
+    label: {id: Rincian pesanan}
+    request:
+      method: GET
+      url: https://{auth.api_host}/api/v2/order/get_order_detail
+      query:
+        partner_id: '{auth.partner_id}'
+        shop_id: '{auth.shop_id}'
+        access_token: '{auth.access_token}'
+        order_sn_list: '{input.order_sn_list}'
+        response_optional_fields: item_list,pay_time,total_amount,package_list,shipping_carrier,payment_method,cancel_by,cancel_reason,buyer_cancel_reason,pickup_done_time,fulfillment_flag
+    input:
+      - {name: order_sn_list, type: data, required: true, help: {id: 'Nomor pesanan Shopee, maksimal 50 dipisah koma'}}
+    output: {orders: response.order_list}
+    retry: {max: 5, backoff: exponential, on: [429, 500, 502, 503]}
+    allow_secret_in: [query]
+  # GET v2.payment.get_escrow_list: escrows released in the window, page_size up to 100, page_no from 1.
+  - name: list_settlements
+    label: {id: Daftar dana cair}
+    request:
+      method: GET
+      url: https://{auth.api_host}/api/v2/payment/get_escrow_list
+      query:
+        partner_id: '{auth.partner_id}'
+        shop_id: '{auth.shop_id}'
+        access_token: '{auth.access_token}'
+        release_time_from: '{input.release_time_from}'
+        release_time_to: '{input.release_time_to}'
+        page_size: '100'
+        page_no: '{input.page_no}'
+    input:
+      - {name: release_time_from, type: int, default: "(days_between('1970-01-01', today()) - 2) * 86400", help: {id: 'Detik epoch (UTC)'}}
+      - {name: release_time_to, type: int, default: "(days_between('1970-01-01', today()) + 1) * 86400", help: {id: 'Detik epoch (UTC)'}}
+      - {name: page_no, type: int, default: '1'}
+    output: {escrows: response.escrow_list, more: response.more}
+    retry: {max: 5, backoff: exponential, on: [429, 500, 502, 503]}
+    allow_secret_in: [query]
+  # GET v2.payment.get_escrow_detail: the money breakdown of one order (order_income).
+  - name: get_settlement
+    label: {id: Rincian dana cair}
+    request:
+      method: GET
+      url: https://{auth.api_host}/api/v2/payment/get_escrow_detail
+      query:
+        partner_id: '{auth.partner_id}'
+        shop_id: '{auth.shop_id}'
+        access_token: '{auth.access_token}'
+        order_sn: '{input.order_sn}'
+    input:
+      - {name: order_sn, type: data, required: true}
+    output: {settlement: response}
+    retry: {max: 5, backoff: exponential, on: [429, 500, 502, 503]}
+    allow_secret_in: [query]
+  # POST v2.product.update_stock: sets the seller stock of one model of one item to an absolute number (Rangka is the
+  # master of stock; never a delta). model_id 0 for an item without variations; no location_id for a shop without
+  # warehouses. Shopee refuses a stock below the stock reserved for a promotion. as_of (the time or revision of the
+  # stock figure) keeps a later push of a quantity sent before (5, then 3, then 5 again) from being taken for a repeat.
+  - name: update_stock
+    label: {id: Kirim stok ke Shopee}
+    request:
+      method: POST
+      url: https://{auth.api_host}/api/v2/product/update_stock
+      query:
+        partner_id: '{auth.partner_id}'
+        shop_id: '{auth.shop_id}'
+        access_token: '{auth.access_token}'
+      body:
+        item_id: '{input.item_id}'
+        stock_list:
+          - model_id: '{input.model_id}'
+            seller_stock:
+              - stock: '{input.stock}'
+    input:
+      - {name: item_id, type: int, required: true, help: {id: item_id Shopee dari baris pesanan atau daftar produk}}
+      - {name: model_id, type: int, default: '0', help: {id: '0 untuk produk tanpa variasi'}}
+      - {name: stock, type: int, required: true, help: {id: 'Stok tersedia, angka mutlak'}}
+      - {name: as_of, type: data, default: "''", help: {id: 'Waktu atau revisi angka stok ini'}}
+    output: {success: response.success_list, failures: response.failure_list}
+    retry: {max: 5, backoff: exponential, on: [429, 500, 502, 503]}
+    idempotency: string(input.item_id) + ':' + string(input.model_id) + ':' + string(input.stock) + ':' + input.as_of
+    allow_secret_in: [query]
+  # GET v2.logistics.get_tracking_number: empty until the 3PL has given one.
+  - name: get_tracking
+    label: {id: Nomor resi}
+    request:
+      method: GET
+      url: https://{auth.api_host}/api/v2/logistics/get_tracking_number
+      query:
+        partner_id: '{auth.partner_id}'
+        shop_id: '{auth.shop_id}'
+        access_token: '{auth.access_token}'
+        order_sn: '{input.order_sn}'
+        package_number: '{input.package_number}'
+    input:
+      - {name: order_sn, type: data, required: true}
+      - {name: package_number, type: data}
+    output: {tracking_number: response.tracking_number}
+    retry: {max: 5, backoff: exponential, on: [429, 500, 502, 503]}
+    allow_secret_in: [query]
+  # GET v2.product.get_item_list: items by offset, up to 100 per page (NORMAL items only).
+  - name: list_items
+    label: {id: Daftar produk Shopee}
+    request:
+      method: GET
+      url: https://{auth.api_host}/api/v2/product/get_item_list
+      query:
+        partner_id: '{auth.partner_id}'
+        shop_id: '{auth.shop_id}'
+        access_token: '{auth.access_token}'
+        offset: '{input.offset}'
+        page_size: '100'
+        item_status: NORMAL
+    input:
+      - {name: offset, type: int, default: '0'}
+    output: {items: response.item, more: response.has_next_page, next_offset: response.next_offset, total: response.total_count}
+    retry: {max: 5, backoff: exponential, on: [429, 500, 502, 503]}
+    allow_secret_in: [query]
+  # GET v2.product.get_model_list: the variations of one item, each with model_sku and its stock
+  # (stock_info_v2.seller_stock, summary_info.total_reserved_stock).
+  - name: get_models
+    label: {id: Variasi produk Shopee}
+    request:
+      method: GET
+      url: https://{auth.api_host}/api/v2/product/get_model_list
+      query:
+        partner_id: '{auth.partner_id}'
+        shop_id: '{auth.shop_id}'
+        access_token: '{auth.access_token}'
+        item_id: '{input.item_id}'
+    input:
+      - {name: item_id, type: int, required: true}
+    output: {models: response.model, tiers: response.tier_variation}
+    retry: {max: 5, backoff: exponential, on: [429, 500, 502, 503]}
+    allow_secret_in: [query]
+limits:
+  rate: 'not published by Shopee: HTTP 429 error_rate_limit, a daily quota (error_limit, reset 00:00 UTC+8), success rate above 90%'
+  # Seller In House System: Mall, Managed, or at least 30 orders in 30 days in ID; review about 7 working days, then
+  # 24 hours for go-live. The sandbox works with the test partner before go-live.
+  note: {id: 'Perlu akun developer Shopee (Seller In House System: toko Mall, Managed, atau 30 pesanan dalam 30 hari). Uji dulu di sandbox'}

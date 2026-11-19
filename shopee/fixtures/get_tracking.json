@@ -1,0 +1,13 @@
+{
+  "error": "",
+  "message": "",
+  "request_id": "00000000000000000000000000000006",
+  "response": {
+    "tracking_number": "SPXID0261116005E",
+    "first_mile_tracking_number": "",
+    "last_mile_tracking_number": "",
+    "plp_number": "",
+    "hint": "",
+    "pickup_code": ""
+  }
+}

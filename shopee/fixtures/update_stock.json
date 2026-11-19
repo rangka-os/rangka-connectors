@@ -1,0 +1,15 @@
+{
+  "error": "",
+  "message": "",
+  "request_id": "00000000000000000000000000000005",
+  "response": {
+    "failure_list": [],
+    "success_list": [
+      {
+        "model_id": 4002001,
+        "location_id": "IDZ",
+        "stock": 20
+      }
+    ]
+  }
+}
