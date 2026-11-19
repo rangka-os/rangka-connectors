@@ -1,0 +1,22 @@
+{
+ "code": 0,
+ "message": "Success",
+ "request_id": "202611180100000101890810281E8C7001",
+ "data": {
+  "next_page_token": "",
+  "statements": [
+   {
+    "id": "7300000000000009001",
+    "statement_time": 1794960000,
+    "settlement_amount": "26550",
+    "currency": "IDR",
+    "revenue_amount": "30000",
+    "fee_amount": "-3450",
+    "adjustment_amount": "0",
+    "payment_status": "PAID",
+    "payment_id": "7300000000000009101",
+    "payment_time": 1794985200
+   }
+  ]
+ }
+}

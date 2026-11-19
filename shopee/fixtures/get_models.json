@@ -1,0 +1,52 @@
+{
+  "error": "",
+  "message": "",
+  "request_id": "00000000000000000000000000000008",
+  "response": {
+    "tier_variation": [
+      {
+        "name": "Rasa",
+        "option_list": [
+          {
+            "option": "Pedas"
+          }
+        ]
+      }
+    ],
+    "model": [
+      {
+        "model_id": 4002001,
+        "tier_index": [
+          0
+        ],
+        "model_sku": "TH-PDS",
+        "model_status": "MODEL_NORMAL",
+        "promotion_id": 0,
+        "has_promotion": false,
+        "price_info": [
+          {
+            "currency": "IDR",
+            "current_price": 16000,
+            "original_price": 18000
+          }
+        ],
+        "stock_info_v2": {
+          "summary_info": {
+            "total_reserved_stock": 2,
+            "total_available_stock": 25
+          },
+          "seller_stock": [
+            {
+              "location_id": "IDZ",
+              "stock": 25,
+              "if_saleable": true
+            }
+          ],
+          "shopee_stock": []
+        },
+        "weight": 0.25,
+        "is_fulfillment_by_shopee": false
+      }
+    ]
+  }
+}
