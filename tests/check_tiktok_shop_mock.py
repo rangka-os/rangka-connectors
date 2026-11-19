@@ -349,7 +349,7 @@ spec_text = open(os.path.join(ROOT, "tiktok_shop", "connector.rk")).read()
 stock_block = spec_text.split("  - name: update_stock\n", 1)[1].split("\n  - name: ", 1)[0]
 check("spec update_stock: revision is a required input and ends the idempotency key; output failures = data.errors",
       re.search(r"\{name: revision, type: data, required: true", stock_block) is not None
-      and "idempotency: input.product_id + ':' + input.sku_id + ':' + input.warehouse_id + ':' + string(input.quantity) + ':' + input.revision\n"
+      and "idempotency: input.product_id + ':' + input.sku_id + ':' + input.warehouse_id + ':' + string(input.quantity) + ':' + string(input.revision)\n"
       in stock_block + "\n" and "output: {failures: data.errors}" in stock_block, stock_block[-600:])
 stock_keys = [f"{pid}:{sid}::{n}:{rev}" for n, rev in ((3, "mv-1"), (5, "mv-2"), (3, "mv-3"), (3, "mv-3"))]
 check("stock keys: 3, 5, 3 again after two changes are three keys; a repeated push is one", len(set(stock_keys)) == 3, stock_keys)

@@ -375,7 +375,7 @@ check("update_stock of an item without variations (model_id 0) to 0", st == 200 
 stock_block = spec_text.split("  - name: update_stock\n", 1)[1].split("\n  - name: ", 1)[0]
 check("spec update_stock: revision is a required input and ends the idempotency key; output failures = failure_list",
       re.search(r"\{name: revision, type: data, required: true", stock_block) is not None
-      and "idempotency: string(input.item_id) + ':' + string(input.model_id) + ':' + string(input.stock) + ':' + input.revision\n" in stock_block + "\n"
+      and "idempotency: string(input.item_id) + ':' + string(input.model_id) + ':' + string(input.stock) + ':' + string(input.revision)\n" in stock_block + "\n"
       and "failures: response.failure_list" in stock_block and "as_of" not in stock_block, stock_block[-600:])
 key = lambda item, model, n, rev: f"{item}:{model}:{n}:{rev}"  # noqa: E731  (the spec's key, in Python)
 pushes_keys = [key(3001002, 4002001, n, rev) for n, rev in ((5, "mv-101"), (3, "mv-102"), (5, "mv-103"), (5, "mv-103"))]

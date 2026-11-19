@@ -232,9 +232,9 @@ actions:
     retry: {max: 5, backoff: exponential, on: [429, 500, 502, 503]}
   # Absolute quantity per SKU and warehouse (the legacy mode: sku_warehouse_stock_update_mode, new in Oct 2026, is not
   # sent). One number serves both storefronts. The quantity is the available stock of marketplace/README.md rule 1,
-  # pushed after a staging or a stock change in Rangka, never on a timer alone. revision (required: the sequence of the
-  # stock change in Rangka) is in the idempotency key, so a later push of a quantity sent before is sent, while the same
-  # push repeated is sent once. A partial failure answers code 0 with data.errors (output failures): a flow treats a
+  # pushed only right after a successful order poll that staged every new order. revision (required, unique per push
+  # and increasing: the push time in milliseconds) is in the idempotency key, so every new push is sent while a retry
+  # of the same job is sent once; retries are short, a failed push waits for the next poll. A partial failure answers code 0 with data.errors (output failures): a flow treats a
   # non-empty failures as a failed push and tells the owner. An empty warehouse_id is read as the shop's default
   # warehouse; to confirm in the Development Shop.
   - name: update_stock
@@ -254,10 +254,10 @@ actions:
       - {name: sku_id, type: data, required: true}
       - {name: quantity, type: int, required: true, help: {id: 'Stok tersedia, angka utuh (bukan selisih)'}}
       - {name: warehouse_id, type: data, default: "''", help: {id: 'Kosongkan untuk gudang utama toko'}}
-      - {name: revision, type: data, required: true, help: {id: 'Urutan perubahan stok di Rangka, misalnya id atau waktu gerak stok terakhir, supaya jumlah yang sama bisa dikirim lagi setelah ada perubahan'}}
+      - {name: revision, type: data, required: true, help: {id: 'Unik untuk setiap kiriman dan terus naik, misalnya waktu kirim dalam milidetik'}}
     output: {failures: data.errors}
-    retry: {max: 5, backoff: exponential, on: [429, 500, 502, 503]}
-    idempotency: input.product_id + ':' + input.sku_id + ':' + input.warehouse_id + ':' + string(input.quantity) + ':' + input.revision
+    retry: {max: 2, backoff: fixed, on: [429, 500, 502, 503]}
+    idempotency: input.product_id + ':' + input.sku_id + ':' + input.warehouse_id + ':' + string(input.quantity) + ':' + string(input.revision)
   # The tracking number of a package (packages[].id or line_items[].package_id of the order).
   - name: get_tracking
     label: {id: Nomor resi}

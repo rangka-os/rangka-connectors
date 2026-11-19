@@ -657,6 +657,9 @@ class Client:
         raise TikTokError(105002, "access token still expired after a refresh")
 
     def refresh(self):
+        if not self.token_file:
+            # TikTok Shop may rotate the pair on a refresh: without a file to keep the new pair it would be lost
+            raise SystemExit("the access token expired: rerun with --token-file so the refreshed token pair is kept")
         q = urllib.parse.urlencode({"app_key": self.c["app_key"], "app_secret": self.c["app_secret"],
                                     "refresh_token": self.c["refresh_token"], "grant_type": "refresh_token"})
         try:

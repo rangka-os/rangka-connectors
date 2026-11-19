@@ -730,6 +730,9 @@ class Client:
         return doc
 
     def do_refresh(self):
+        if not self.token_file:
+            # the vendor rotates the pair on a refresh: without a file to keep the new pair it would be lost
+            raise SystemExit("the access token expired: rerun with --token-file so the refreshed token pair is kept")
         doc = self._send("POST", "/api/v2/auth/access_token/get", None,
                          {"shop_id": int(self.shop_id), "refresh_token": self.refresh_token, "partner_id": int(self.partner_id)}, True)
         # the rotated refresh token is kept before the new access token is used (proposal part C)

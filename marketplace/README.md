@@ -13,11 +13,13 @@ Tokopedia has no connector of its own. Its Open API was shut down on 30 Sep 2025
 1. **Rangka is the master of stock.** Stock leaves Rangka when a person submits the day's sale; a marketplace never
    writes stock into Rangka. The quantity pushed to a marketplace (`update_stock`) is the stock balance in Rangka of
    the outlet that holds marketplace stock, minus every marketplace line already staged but not yet in a submitted
-   sale (all channels), minus a buffer the owner sets. It is pushed after an order is staged and after a stock change
-   in Rangka (a receipt, a POS sale, a submitted sale, an adjustment), never before staging. Between a marketplace sale
-   and its staging (up to one poll interval) the marketplace keeps its own decrement while Rangka does not know the
-   sale yet, so a push must not run on a timer alone: a timed push inside that gap puts the sold units back on sale.
-   Every push carries a `revision` (see "Actions").
+   sale (all channels), minus a buffer the owner sets. **A push runs only right after an order poll of that
+   marketplace succeeded and every order it returned is staged**, so every marketplace sale up to the poll is already
+   counted. A stock change in Rangka (a receipt, a POS sale, a submitted sale, an adjustment, a buffer change) never
+   pushes by itself: it marks the SKU to be pushed after the next successful poll. If the poll fails, nothing is
+   pushed, so a relay or kernel outage can never put sold units back on sale. A push is never retried later than the
+   next poll: a stale push could overwrite a newer quantity, so a push that fails waits for the next poll instead.
+   Every push carries its own `revision` (see "Actions").
 2. **An order becomes a sale when it can be shipped** (`sold`), not when it is created and not when it is completed.
    Its lines are staged and join the day's draft sale of the outlet that holds the marketplace stock: the path Moka
    sales already take in rangka-apps (`moka_sale_line`, a daily draft `outlet_sales`, a person submits). A flow never
@@ -29,6 +31,11 @@ Tokopedia has no connector of its own. Its Open API was shut down on 30 Sep 2025
    poll interval) adds nothing. **Returns are not read in v0.1.** No connector reads the marketplace's returns: a
    return after completion is booked by a person from the seller centre, as a Moka refund outside its window is.
    Shopee `TO_RETURN` and TikTok Shop's returns set no flag. Reading returns is the next step ("Adding later").
+   A person books a return only for an order that is `completed`: a return the marketplace accepts before
+   completion ends as `cancelled` (or as a cancelled line, below) and is reversed by the flow, never by hand.
+   A line the marketplace cancels inside an order that goes on (TikTok Shop `display_status` `CANCELLED` on a line,
+   Shopee `cancelled_qty` on an item) is not staged; a line cancelled after it was staged is reversed with a negative
+   line, keyed per line (see "Flow keys").
 4. **Fees are booked at settlement**, from what the marketplace reports for the order, and only the named lines:
    `commission_fee`, `service_fee` and `transaction_fee` are an expense (rangka-apps account 61200, "Biaya admin
    pembayaran"), `withheld_tax` is a prepaid tax asset (PPh 22, PMK 37/2025), never an expense. A voucher or discount
@@ -116,6 +123,7 @@ idempotency key, and the staging flow acts on transitions only (`shipped` and `c
 |---|---|---|---|
 | `<connector>_order_staged` | `sold` | `channel + ':' + order_id + ':sold'` | Stages the order's lines once |
 | `<connector>_order_staged` | `cancelled` | `channel + ':' + order_id + ':cancelled'` | Reverses once what was staged (nothing when it was never staged, rule 3) |
+| `<connector>_order_staged` | a line of a staged order is now cancelled (TikTok Shop `display_status` `CANCELLED`, Shopee `cancelled_qty` above what was reversed) | `channel + ':' + order_id + ':' + line id + ':line_cancelled'` (Shopee: `+ ':' + string(cancelled_qty)`) | Reverses that line once |
 | `<connector>_order_settled` | always for `shopee`; `income.type == 'ORDER'` for `tiktok_shop` | `channel + ':' + order_id + ':settled'` | Books the named fees and withheld tax and the receivable, once |
 
 A run whose key was seen before does nothing. A TikTok Shop record that is not `ORDER` never reaches a booking
@@ -140,7 +148,7 @@ A staging flow reads these fields from `lines`; nothing else differs between mar
 |---|---|
 | `list_orders`, `get_order_detail` (or one action when the vendor's list is complete) | Read by `order_changed` |
 | `list_settlements`, `get_settlement` (or one action) | Read by `order_settled` |
-| `update_stock` | Set the available quantity of rule 1 for one SKU to an absolute number, never a delta. Required input `revision`: the sequence of the stock change in Rangka (the last stock move's id or time). Its idempotency key is the vendor ids + `':'` + quantity + `':'` + `revision`, so the same quantity is sent again after a change, and the same push repeated is sent once. Output `failures`: the vendor's per-item failure list (Shopee `failure_list`, TikTok Shop `data.errors`). The vendor answers a partial failure with success, so a flow MUST treat a non-empty `failures` as a failed push and tell the owner |
+| `update_stock` | Set the available quantity of rule 1 for one SKU to an absolute number, never a delta. Required input `revision`: unique for every push, increasing (the time of the push in milliseconds, as text); never the id of a stock move, because staging, cancelling and a buffer change alter the quantity without one, and the kernel keeps every key forever, so a repeated revision would drop that push. Its idempotency key is the vendor ids + `':'` + quantity + `':'` + `revision`, so a retry of the same job is sent once and every new push is sent. Pass every input explicitly (the kernel builds the key before filling input defaults). Retries are short (rule 1). Output `failures`: the vendor's per-item failure list (Shopee `failure_list`, TikTok Shop `data.errors`). The vendor answers a partial failure with success, so a flow MUST treat a non-empty `failures` as a failed push and tell the owner |
 | `get_tracking` | The tracking number of a shipped order |
 
 Arranging a shipment (pickup, drop-off, labels) stays in the seller centre in this version.
