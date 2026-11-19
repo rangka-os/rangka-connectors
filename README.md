@@ -48,6 +48,11 @@ kernel's poll trigger does and hands each event, in the trigger's emit shape, to
 Until the kernel runs connectors, the retail and F&B apps read POS data from export files (rangka-apps
 `moka_item_details`, `loyverse_receipts`, `pos_sales_file`); the two POS specs above are what a scheduled flow will call.
 
+ESB (ESB POS, ESB Core) has no connector here: ESB publishes neither an API reference nor the layout of its export
+files (research in Juragan's reports/keputusan-riset/esb-connector.md, 19 Nov 2026). Its sales come in through
+rangka-apps `pos_sales_file`, after `scripts/pos_export_to_template.py` converts the export with a mapping written from
+the first real file (`examples/pos-mappings`). A connector follows once ESB documents a partner API.
+
 Planned, in rough order: bank statements, e-Faktur / Coretax, Tokopedia, Shopee, TikTok Shop,
 GoFood / GrabFood, Accurate / Jurnal import.
 
