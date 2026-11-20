@@ -34,7 +34,7 @@ What the kernel holds works for this business only and is not Meta's:
 
 `send_template {to, template, type, components, idempotency_key}` → `{message_id, status}`.
 
-- `type` is the business's message type: `receipt`, `reminder`, `order_ready`, `appointment`. Each can be switched off
+- `type` is the business's message type: `receipt`, `reminder`, `order_ready`, `appointment`, `order_reply`. Each can be switched off
   on its own.
 - `components` is one body component with text parameters, in the template's order. The host rebuilds what goes to
   Meta from them; a header, a button or media is refused.
@@ -74,7 +74,7 @@ Every event is one JSON object, signed over the raw body: `X-Rangka-Signature: s
 | Trigger | Fields | When |
 | --- | --- | --- |
 | `message_status` | `message_id`, `idempotency_key`, `type`, `status` (`sent`, `delivered`, `read`, `failed`), `at`, `error` | Meta reported a status, or the host refused a send (`failed`, `message_id` empty, the code in `error`) |
-| `message_received` | `message_id`, `from`, `text`, `profile_name`, `at` | a customer wrote to the number (it only sends in phase 1) |
+| `message_received` | `message_id`, `from`, `text`, `kind`, `profile_name`, `at`, `lines`, `notes`, `order_signal` | a customer wrote to the number (it only sends in phase 1). The host reads a text as an order (deterministic, no catalogue): `lines` are `{qty, qty_given, unit, name, note, text}` with `name` lower-case ASCII words, `notes` the pick-up, delivery or time remarks, `order_signal` true when it reads as an order (an order word, a quantity, or a list of two or more). rangka-apps module `whatsapp_order` matches the lines against the business's items |
 | `opted_out` | `phone`, `at`, `source` (`keyword`, `meta`, `staff`) | a customer replied `BERHENTI` or `STOP`, or Meta reported a block |
 
 A status never carries the phone: the flow finds its document by `idempotency_key`.
@@ -92,6 +92,7 @@ language `id`, and end with *Balas BERHENTI untuk berhenti menerima pesan.*
 | `terima_kasih_lunas` | `reminder` | Halo {{1}}, terima kasih. Pembayaran faktur {{2}} sudah kami terima dan faktur ini sudah lunas. |
 | `pesanan_siap` | `order_ready` | Halo {{1}}, pesanan {{2}} di {{3}} sudah siap diambil. Sebutkan nomor pesanan saat mengambil. Terima kasih. |
 | `pengingat_janji` | `appointment` | Halo {{1}}, kami mengingatkan {{2}} di {{3}} pada {{4}}. Kalau perlu mengubah jadwal, hubungi kami sebelum waktunya. Terima kasih. |
+| `pesanan_diterima` | `order_reply` | Halo {{1}}, pesanan {{2}} di {{3}} sudah kami terima: {{4}}. Total {{5}}. Terima kasih. |
 
 ## Local mock
 

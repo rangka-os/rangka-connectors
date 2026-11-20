@@ -1,9 +1,10 @@
 {
   "message_status.json": {"message_id": "wam_contoh0001", "idempotency_key": "STRK-KPI-2611-00142:receipt:1", "type": "receipt", "status": "read", "error": ""},
   "message_status_refused.json": {"message_id": "", "idempotency_key": "INV-2026-00031:reminder:7", "status": "failed", "error": "recipient_opted_out"},
-  "message_received.json": {"from": "+6281200000001", "text": "Terima kasih", "profile_name": "Pelanggan Contoh"},
+  "message_received.json": {"from": "+6281200000001", "text": "Terima kasih", "profile_name": "Pelanggan Contoh", "kind": "text", "order_signal": false},
   "opted_out.json": {"phone": "+6281200000001", "source": "keyword"},
   "send_template.json": {"message_id": "wam_contoh0001", "status": "accepted"},
   "send_template_duplicate.json": {"message_id": "wam_contoh0001", "status": "delivered"},
-  "set_opt_out.json": {"status": "recorded"}
+  "set_opt_out.json": {"status": "recorded"},
+  "message_received_order.json": {"from": "+6281200000001", "order_signal": true, "notes": ["ambil jam 3"]}
 }

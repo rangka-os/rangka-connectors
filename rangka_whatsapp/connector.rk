@@ -12,11 +12,11 @@
 name: rangka_whatsapp
 label: {id: WhatsApp dari Rangka Cloud, en: WhatsApp from Rangka Cloud}
 summary:
-  id: Kirim struk, pengingat tagihan dan kabar pesanan ke pelanggan dari nomor WhatsApp bisnismu yang disediakan Rangka Cloud.
+  id: Kirim struk, pengingat tagihan dan kabar pesanan ke pelanggan dari nomor WhatsApp bisnismu yang disediakan Rangka Cloud, dan terima pesanan yang ditulis pelanggan lewat WhatsApp.
   en: Send receipts, payment reminders and order updates to customers from the WhatsApp number Rangka Cloud provides for your business.
 category: messaging
 icon: send-plane-line
-version: 0.1.0
+version: 0.2.0
 vendor: Rangka Cloud
 docs: https://github.com/rangka-os/rangka-connectors/blob/main/rangka_whatsapp/README.md
 # The host's public service address. A placeholder under the reserved .example domain until Rangka Cloud has one:
@@ -55,7 +55,11 @@ triggers:
       status: status
       at: at
       error: error
-  # A customer wrote to the number. The number only sends (phase 1), so this is for the business to see.
+  # A customer wrote to the number. The number only sends (phase 1), so this is for the business to see. The host
+  # also reads a text as an order (Rangka Cloud internal/whatsapp/orderparse, deterministic, no catalogue): `lines`
+  # [{qty, qty_given, unit, name, note, text}], `notes` (pick-up, delivery, time) and `order_signal` (an order word,
+  # a quantity or a list). rangka-apps module whatsapp_order matches the lines against the business's own items;
+  # `kind` is Meta's message type (text, image, …; a non-text message has no text and no lines).
   - name: message_received
     label: {id: Pesan masuk, en: Incoming message}
     via: webhook
@@ -69,8 +73,12 @@ triggers:
       message_id: message_id
       from: from
       text: text
+      kind: kind
       profile_name: profile_name
       at: at
+      lines: lines
+      notes: notes
+      order_signal: order_signal
   # A customer asked to stop (they replied BERHENTI or STOP, or Meta reported a block). The host already refuses
   # sends to them; the flow marks the customer so staff see it.
   - name: opted_out
@@ -102,7 +110,7 @@ actions:
     input:
       - {name: to, type: phone, required: true}
       - {name: template, type: data, required: true}
-      # receipt | reminder | order_ready | appointment: which of the business's message types this is
+      # receipt | reminder | order_ready | appointment | order_reply: which of the business's message types this is
       - {name: type, type: data, required: true}
       - {name: components, type: json}
       # <document>:<type>:<step>, e.g. STRK-KPI-2611-00142:receipt:1. The same key is sent once, by the kernel

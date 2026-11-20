@@ -1,1 +1,1 @@
-{"message_id": "wamid.CONTOH0002", "from": "+6281200000001", "text": "Terima kasih", "profile_name": "Pelanggan Contoh", "at": "2026-11-19T03:05:00Z"}
+{"message_id": "wamid.CONTOH0002", "from": "+6281200000001", "text": "Terima kasih", "kind": "text", "profile_name": "Pelanggan Contoh", "at": "2026-11-19T03:05:00Z", "lines": [], "notes": [], "order_signal": false}
