@@ -12,7 +12,7 @@
 name: rangka_whatsapp
 label: {id: WhatsApp dari Rangka Cloud, en: WhatsApp from Rangka Cloud}
 summary:
-  id: Kirim struk, pengingat tagihan dan kabar pesanan ke pelanggan dari nomor WhatsApp bisnismu yang disediakan Rangka Cloud, dan terima pesanan yang ditulis pelanggan lewat WhatsApp.
+  id: Kirim struk, pengingat dan kabar pesanan, dan terima pesanan pelanggan, lewat nomor WhatsApp bisnismu dari Rangka Cloud.
   en: Send receipts, payment reminders and order updates to customers from the WhatsApp number Rangka Cloud provides for your business.
 category: messaging
 icon: send-plane-line
