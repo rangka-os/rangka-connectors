@@ -18,8 +18,10 @@ Stdlib only. The request, answer and event shapes follow connector.rk and README
 - POST /svc/whatsapp/v1/opt-outs (Bearer token) {phone}: 200 {status: recorded | already}.
 - POST /simulate/status {message_id | idempotency_key, status, error}: the message's status changes (sent, delivered,
   read, failed) and the mock posts the message_status event to --hook-url/message_status, signed.
-- POST /simulate/inbound {from, text}: a customer writes. BERHENTI or STOP opts them out and posts opted_out; anything
-  else posts message_received.
+- POST /simulate/inbound {from, text[, lines, notes, order_signal]}: a customer writes. BERHENTI or STOP opts them out
+  and posts opted_out; anything else posts message_received. The host reads a text as an order with its own parser
+  (Rangka Cloud internal/whatsapp/orderparse); this mock has none, so a test passes the lines it wants the kernel to
+  hear (none by default).
 - POST /simulate/redeliver[?key=<other>]: posts the last event again (the host retries an event that got no 2xx),
   optionally signed with another key, to test the receiver's dedupe and its signature check.
 - POST /simulate/service {state: active | stopped | paused}, POST /simulate/template {name, approved: true | false},
@@ -54,8 +56,9 @@ TEMPLATES = {
     "terima_kasih_lunas": ("reminder", 2),
     "pesanan_siap": ("order_ready", 3),
     "pengingat_janji": ("appointment", 4),
+    "pesanan_diterima": ("order_reply", 5),
 }
-TYPES = {"receipt", "reminder", "order_ready", "appointment"}
+TYPES = {"receipt", "reminder", "order_ready", "appointment", "order_reply"}
 STOP_WORDS = {"BERHENTI", "STOP"}
 KEY_RE = re.compile(r"^[A-Za-z0-9._:/-]{1,200}$")
 SIGNATURE_HEADER = "X-Rangka-Signature"
@@ -299,7 +302,9 @@ def handler(state: State):
                     code = deliver(state, "opted_out", {"phone": phone, "at": now_iso(), "source": "keyword"})
                 else:
                     code = deliver(state, "message_received", {"message_id": "wamid.IN" + uuid.uuid4().hex[:12], "from": phone, "text": text,
-                                                               "profile_name": str(b.get("profile_name") or "Pelanggan Contoh"), "at": now_iso()})
+                                                               "kind": "text", "profile_name": str(b.get("profile_name") or "Pelanggan Contoh"),
+                                                               "at": now_iso(), "lines": b.get("lines") or [], "notes": b.get("notes") or [],
+                                                               "order_signal": bool(b.get("order_signal"))})
                 return self._json(200, {"hook_status": code})
             if what == "redeliver":
                 with state.lock:
